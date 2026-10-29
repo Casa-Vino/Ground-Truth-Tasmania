@@ -1,0 +1,1386 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="An edu-tainment game about residential foundation assessments across Tasmania.">
+<title>Ground Truth Tasmania</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Saira+Stencil+One&family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: command console. HUD strip on top, tab rail, then a map "theatre" beside a briefing column.
+   Minigames open in a field-sheet modal. Deliberately single dark look (night-shift site office). */
+:root{
+  --bg:#0f1514; --panel:#161f1d; --panel2:#1d2826; --line:#2d3d39; --fg:#e1e8e3; --dim:#93a69e;
+  --radar:#8bd897; --hivis:#ff9b30; --book:#efdb72; --bad:#ff6455; --water:#4aa3ff;
+  --f-display:'Saira Stencil One', Impact, 'Arial Black', sans-serif;
+  --f-body:'IBM Plex Sans Condensed','Arial Narrow',system-ui,sans-serif;
+  --f-mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{min-height:100%}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:15px;line-height:1.45;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0 40px;
+  background-image:radial-gradient(circle at 20% 0%,#1a2624 0,transparent 55%);}
+button{font:inherit;cursor:pointer}
+button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--book);outline-offset:2px}
+h1,h2,h3{font-family:var(--f-display);font-weight:400;letter-spacing:.04em;text-wrap:balance;margin:0}
+.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.dim{color:var(--dim)}
+.wrap{max-width:1280px;margin:0 auto}
+
+/* HUD */
+.hud{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:var(--bg);border-bottom:1px solid var(--line);padding-block:10px;display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:30;background:var(--bg)}
+.brand{font-family:var(--f-display);font-size:22px;color:var(--hivis);letter-spacing:.06em;line-height:1}
+.brand small{display:block;font-family:var(--f-mono);font-size:10px;color:var(--dim);letter-spacing:.2em}
+.stat{display:flex;flex-direction:column;gap:2px;min-width:0}
+.stat label{font-size:10px;text-transform:uppercase;letter-spacing:.14em;color:var(--dim)}
+.stat b{font-family:var(--f-mono);font-size:16px;font-weight:600}
+.bar{height:6px;width:120px;background:var(--panel2);border:1px solid var(--line);position:relative;overflow:hidden}
+.bar i{position:absolute;inset:0 auto 0 0;background:var(--book)}
+.bar.rep i{background:var(--radar)}
+.hud .spacer{flex:1}
+.btn{background:var(--panel2);color:var(--fg);border:1px solid var(--line);padding:7px 12px;border-radius:2px;font-weight:600;letter-spacing:.02em}
+.btn:hover:not(:disabled){border-color:var(--hivis)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn.go{background:var(--hivis);color:#1b1205;border-color:var(--hivis)}
+.btn.go:hover:not(:disabled){filter:brightness(1.1)}
+.btn.ok{background:var(--radar);color:#0b1a0e;border-color:var(--radar)}
+.btn.warn{border-color:var(--bad);color:var(--bad)}
+.btn.sm{padding:4px 9px;font-size:13px}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+
+/* tabs */
+.tabs{display:flex;gap:2px;margin-top:12px;overflow-x:auto}
+.tab{background:none;border:1px solid var(--line);border-bottom:none;color:var(--dim);padding:8px 14px;font-family:var(--f-display);font-size:15px;letter-spacing:.06em;white-space:nowrap}
+.tab[aria-selected="true"]{color:var(--bg);background:var(--book);border-color:var(--book)}
+.tab .pip{display:inline-block;min-width:18px;padding:0 4px;margin-left:6px;border-radius:9px;background:var(--hivis);color:#1b1205;font-family:var(--f-mono);font-size:11px}
+.view{border:1px solid var(--line);background:var(--panel);padding:16px;min-height:420px}
+
+/* map */
+.theatre{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:16px}
+@media (max-width:860px){.theatre{grid-template-columns:minmax(0,1fr)}}
+.mapbox{position:relative;background:#0b1211;border:1px solid var(--line);overflow:hidden}
+.mapbox svg{display:block;width:100%;height:auto}
+.mapbox::after{content:"";position:absolute;inset:0;pointer-events:none;background:repeating-linear-gradient(0deg,rgba(139,216,151,.035) 0 1px,transparent 1px 3px)}
+.fogbtn{position:absolute;top:8px;right:8px;z-index:2}
+.fogbtn[aria-pressed="true"]{border-color:var(--book);color:var(--book)}
+.maplegend{position:absolute;left:10px;bottom:8px;font-family:var(--f-mono);font-size:10px;color:var(--dim);letter-spacing:.08em}
+.marker{cursor:pointer}
+.marker:focus-visible{outline:none}
+.marker:focus-visible circle,.marker:focus-visible rect{stroke:var(--book);stroke-width:3}
+@keyframes pulse{0%{r:9;opacity:.9}100%{r:22;opacity:0}}
+.pulse{animation:pulse 1.6s ease-out infinite}
+@media (prefers-reduced-motion:reduce){.pulse{animation:none}}
+.brief{display:flex;flex-direction:column;gap:14px;min-width:0}
+.card{border:1px solid var(--line);background:var(--panel2);padding:14px}
+.card h3{font-size:19px;color:var(--book)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-size:14px}
+.kv dt{color:var(--dim)}
+.kv dd{margin:0;font-family:var(--f-mono);font-size:13px}
+.eyebrow{font-family:var(--f-mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--hivis)}
+.ops{display:flex;flex-direction:column;gap:6px}
+.op{display:grid;grid-template-columns:30px 1fr auto;gap:8px;align-items:center;background:var(--panel);border:1px solid var(--line);padding:6px 8px;cursor:pointer;color:var(--fg);text-align:left}
+.op:hover{border-color:var(--hivis)}
+.op .n{font-family:var(--f-display);font-size:18px;color:var(--radar);text-align:center}
+.chip{font-family:var(--f-mono);font-size:11px;padding:2px 6px;border:1px solid currentColor;border-radius:2px;white-space:nowrap}
+.c-hv{color:var(--hivis)}.c-ok{color:var(--radar)}.c-bad{color:var(--bad)}.c-bk{color:var(--book)}.c-dim{color:var(--dim)}
+.feed{font-family:var(--f-mono);font-size:12px;max-height:150px;overflow:auto;display:flex;flex-direction:column;gap:3px}
+.feed div{color:var(--dim)}.feed div b{color:var(--radar);font-weight:600}
+
+/* site */
+.sitegrid{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:16px}
+@media (max-width:860px){.sitegrid{grid-template-columns:minmax(0,1fr)}}
+canvas{display:block;width:100%;height:auto;max-width:100%;touch-action:manipulation}
+.planwrap{border:1px solid var(--line);background:#0b1211}
+.bhlist{display:flex;flex-direction:column;gap:8px}
+.bh{border:1px solid var(--line);background:var(--panel);padding:8px 10px;display:flex;flex-direction:column;gap:6px}
+.bh header{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.bh header b{font-family:var(--f-display);font-size:17px;letter-spacing:.05em}
+.steps{display:flex;flex-wrap:wrap;gap:6px}
+.legend{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12px;color:var(--dim)}
+.legend span::before{content:"";display:inline-block;width:14px;height:3px;margin-right:5px;vertical-align:middle;background:var(--c)}
+
+/* lab, crew, gear */
+.grid3{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+.person{display:flex;flex-direction:column;gap:8px}
+.skills{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;font-size:13px}
+.pips{font-family:var(--f-mono);color:var(--book);letter-spacing:2px}
+.quote{font-style:italic;color:var(--book);font-size:14px}
+.labrow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center}
+.timer{height:8px;background:var(--bg);border:1px solid var(--line);position:relative}
+.timer i{position:absolute;inset:0 auto 0 0;background:linear-gradient(90deg,#c0512a,var(--hivis))}
+
+/* manual */
+.manual{display:grid;grid-template-columns:minmax(0,220px) minmax(0,1fr);gap:20px}
+@media (max-width:760px){.manual{grid-template-columns:minmax(0,1fr)}}
+.manual nav{display:flex;flex-direction:column;gap:2px}
+.manual nav button{background:none;border:none;border-left:2px solid var(--line);color:var(--dim);text-align:left;padding:5px 10px}
+.manual nav button[aria-current="true"]{border-left-color:var(--hivis);color:var(--fg)}
+.manual article{max-width:68ch}
+.manual article h2{font-size:24px;color:var(--book);margin-bottom:8px}
+.manual article p,.manual article li{color:#cdd7d1}
+.tbl{border-collapse:collapse;font-size:13px;width:100%}
+.tbl th,.tbl td{border-bottom:1px solid var(--line);padding:5px 8px;text-align:left;vertical-align:top}
+.tbl th{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--dim);font-weight:600}
+.tbl td.num{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.scroll{overflow-x:auto;max-width:100%}
+
+/* modal */
+.modal{position:fixed;inset:0;z-index:50;background:rgba(4,8,7,.82);display:flex;align-items:flex-start;justify-content:center;overflow:auto;
+  padding:calc(20px + env(safe-area-inset-top,0px)) max(12px,env(safe-area-inset-right,0px)) calc(20px + env(safe-area-inset-bottom,0px)) max(12px,env(safe-area-inset-left,0px))}
+.sheet{width:min(860px,100%);background:var(--panel);border:1px solid var(--line);border-top:4px solid var(--hivis);padding:18px;display:flex;flex-direction:column;gap:12px}
+.sheet h2{font-size:24px;color:var(--book)}
+.sheet .sub{font-family:var(--f-mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--hivis)}
+.tip{border-left:3px solid var(--book);background:var(--panel2);padding:8px 12px;font-size:14px;color:#d6dfd9}
+.msg{font-family:var(--f-mono);font-size:13px;min-height:2.6em;color:var(--radar)}
+.msg.bad{color:var(--bad)}
+.choices{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px}
+.choices .btn{text-align:left}
+.choices .btn[aria-pressed="true"]{border-color:var(--book);color:var(--book)}
+.munsell{display:grid;gap:4px;justify-content:start}
+.chipc{width:38px;height:30px;border:2px solid transparent;border-radius:2px;padding:0}
+.chipc[aria-pressed="true"]{border-color:#fff;box-shadow:0 0 0 2px var(--hivis)}
+.axis{font-family:var(--f-mono);font-size:11px;color:var(--dim);display:flex;align-items:center;justify-content:center}
+.compare{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.swatch{width:110px;height:80px;border:1px solid var(--line);border-radius:3px}
+input[type=range]{width:100%;accent-color:var(--hivis)}
+select,input[type=number]{background:var(--bg);color:var(--fg);border:1px solid var(--line);padding:5px;font:inherit;font-size:13px;max-width:100%}
+
+/* toasts */
+.toasts{position:fixed;right:max(12px,env(safe-area-inset-right,0px));bottom:calc(12px + env(safe-area-inset-bottom,0px));z-index:60;display:flex;flex-direction:column;gap:6px;max-width:min(380px,calc(100vw - 24px))}
+.toast{background:var(--panel2);border:1px solid var(--line);border-left:4px solid var(--radar);padding:9px 12px;font-family:var(--f-mono);font-size:12.5px;box-shadow:0 6px 20px rgba(0,0,0,.4)}
+.toast.bad{border-left-color:var(--bad)}.toast.hv{border-left-color:var(--hivis)}
+.big{font-family:var(--f-display);font-size:40px;color:var(--hivis);line-height:1}
+.shake{animation:shake .25s}
+@keyframes shake{25%{transform:translate(3px,-2px)}50%{transform:translate(-3px,2px)}75%{transform:translate(2px,1px)}}
+@media (prefers-reduced-motion:reduce){.shake{animation:none}}
+[hidden]{display:none!important}
+body{margin:0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="hud" id="hud"></header>
+  <nav class="tabs" id="tabs" role="tablist" aria-label="Game sections"></nav>
+  <main class="view" id="view"></main>
+</div>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+<div id="modalRoot"></div>
+
+<script>
+/* ============================================================
+   GROUND TRUTH: TASMANIA — engineering geology edu-tainment
+   ============================================================ */
+const $=s=>document.querySelector(s);
+const rnd=(a,b)=>a+Math.random()*(b-a);
+const rint=(a,b)=>Math.floor(rnd(a,b+1));
+const pick=a=>a[Math.floor(Math.random()*a.length)];
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const gauss=()=>{let u=0,v=0;while(!u)u=Math.random();while(!v)v=Math.random();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v)};
+const r1=v=>Math.round(v*10)/10;
+const money=v=>(v<0?'-':'')+'$'+Math.abs(Math.round(v)).toLocaleString('en-AU');
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+/* ---------- Munsell → sRGB (approximate, via CIELCh) ---------- */
+const HUES=['2.5YR','5YR','7.5YR','10YR','2.5Y','5Y'];
+const HUE_ANG={'2.5YR':45,'5YR':54,'7.5YR':63,'10YR':72,'2.5Y':82,'5Y':92};
+function munsellRGB(h,v,c){
+  const L=v*10.3-2,C=c*5.6,a=C*Math.cos(HUE_ANG[h]*Math.PI/180),b=C*Math.sin(HUE_ANG[h]*Math.PI/180);
+  const fy=(L+16)/116,fx=fy+a/500,fz=fy-b/200,f=t=>t>6/29?t*t*t:3*(6/29)**2*(t-4/29);
+  const X=.95047*f(fx),Y=f(fy),Z=1.08883*f(fz);
+  const lin=[3.2406*X-1.5372*Y-.4986*Z,-.9689*X+1.8758*Y+.0415*Z,.0557*X-.204*Y+1.057*Z];
+  const g=u=>clamp(Math.round(255*(u<=.0031308?12.92*u:1.055*Math.pow(u,1/2.4)-.055)),0,255);
+  return `rgb(${lin.map(g).join(',')})`;
+}
+function munsellName(h,v,c){
+  const Y=h.endsWith('Y')&&!h.endsWith('YR');
+  if(c<=1){return v<=2?'black':v<=3?'very dark grey':v<=4?'dark grey':v<=6?'grey':v<=7?'light grey':'white'}
+  if(Y){ if(c<=2) return v<=3?'dark olive grey':v<=5?'olive grey':'light olive grey';
+         if(c<=4) return v<=5?'olive':'pale olive'; return 'olive yellow'; }
+  if(c<=2) return v<=2?'black':v<=3?'very dark greyish brown':v<=4?'dark greyish brown':v<=5?'greyish brown':v<=6?'light brownish grey':'light grey';
+  if(c<=4){ if(h==='2.5YR') return v<=3?'dark reddish brown':v<=5?'reddish brown':'light reddish brown';
+            if(h==='5YR') return v<=3?'dark reddish brown':v<=5?'reddish brown':'light reddish brown';
+            return v<=3?'dark brown':v<=5?'brown':v<=6?'pale brown':'very pale brown'; }
+  if(h==='10YR') return v<=4?'dark yellowish brown':v<=5?'yellowish brown':v<=6?'brownish yellow':'yellow';
+  if(h==='7.5YR') return v<=5?'strong brown':'reddish yellow';
+  if(h==='5YR') return v<=3?'dark reddish brown':v<=5?'yellowish red':'reddish yellow';
+  return v<=3?'dark red':v<=5?'red':'light red';
+}
+const munStr=m=>m?`${m.h} ${m.v}/${m.c}`:'—';
+
+/* ---------- Field texture grades (after the Australian Soil & Land Survey Field Handbook) ---------- */
+const TEX=[
+  {k:'S',  n:'Sand',            r:0,  rr:'nil',     feel:'Loose grains, no coherence; won’t form a bolus.'},
+  {k:'LS', n:'Loamy sand',      r:5,  rr:'~5 mm',   feel:'Gritty, barely coherent; just ribbons.'},
+  {k:'CS', n:'Clayey sand',     r:10, rr:'5–15 mm', feel:'Gritty and slightly sticky; sand grains obvious.'},
+  {k:'SL', n:'Sandy loam',      r:20, rr:'15–25 mm',feel:'Gritty but coherent; short ribbon.'},
+  {k:'L',  n:'Loam',            r:25, rr:'~25 mm',  feel:'Smooth and spongy; no obvious grit or stickiness.'},
+  {k:'SCL',n:'Sandy clay loam', r:32, rr:'25–40 mm',feel:'Firm bolus, sandy to touch, medium-size grains visible.'},
+  {k:'CL', n:'Clay loam',       r:45, rr:'40–50 mm',feel:'Smooth, slightly plastic.'},
+  {k:'LC', n:'Light clay',      r:62, rr:'50–75 mm',feel:'Plastic and smooth; slight resistance to shearing.'},
+  {k:'MC', n:'Medium clay',     r:80, rr:'> 75 mm', feel:'Handles like plasticine; moderate resistance.'},
+  {k:'HC', n:'Heavy clay',      r:88, rr:'> 75 mm', feel:'Handles like stiff plasticine; firm resistance to ribboning.'},
+];
+const texIdx=k=>TEX.findIndex(t=>t.k===k);
+const SANDY=['S','LS','CS'];
+
+/* ---------- Geology / profile generators ---------- */
+const mu=(h,v,c)=>({h,v,c});
+function L(desc,tex,mun,LL,PL,LS,dcp,top,bot,x={}){
+  return Object.assign({desc,tex,mun,LL:LL==null?null:r1(LL),PL:PL==null?null:r1(PL),LS:r1(LS),dcp,top:r1(top),bot:r1(bot)},x);
+}
+const GEO={
+  dolerite:{name:'Jurassic dolerite (Jd)',diff:1,note:'Residual clays over dolerite. Hobart’s favourite reactive soil. Watch for dolerite floaters (boulders).',
+    gen(){const a=rnd(.15,.3),b=a+rnd(1.0,1.6),r=b+rnd(.3,.9);return{layers:[
+      L('Topsoil: clay loam, organic, rootlets','CL',mu('10YR',3,2),rnd(33,39),rnd(19,23),rnd(6,8),3,0,a),
+      L('Residual soil: high plasticity clay derived from dolerite','HC',pick([mu('7.5YR',4,4),mu('10YR',4,3),mu('7.5YR',5,6)]),rnd(62,76),rnd(23,28),rnd(14,19),6,a,b),
+      L('Extremely weathered dolerite: gravelly clay','CL',mu('10YR',5,6),rnd(40,48),rnd(19,23),rnd(8,10),14,b,3.2)],
+      rock:r,rockName:'dolerite',floaterP:.38,flagP:null}}},
+  basalt:{name:'Tertiary basalt (Tb)',diff:2,note:'Black cracking clays. Shrink-swell monsters. Expect deep, highly reactive profiles.',
+    gen(){const a=rnd(.2,.35),b=a+rnd(1.7,2.3);return{layers:[
+      L('Topsoil: black clay, cracking, self-mulching','MC',mu('10YR',2,1),rnd(58,66),rnd(22,26),rnd(13,16),3,0,a),
+      L('Residual basalt clay: very high plasticity, slickensided','HC',mu('10YR',3,1),rnd(80,94),rnd(26,31),rnd(19,23),5,a,b),
+      L('Highly weathered basalt: silty clay','CL',mu('2.5Y',5,4),rnd(46,54),rnd(22,26),rnd(10,12),12,b,3.2)],
+      rock:b+rnd(.6,1.2),rockName:'basalt',floaterP:.15,flagP:null}}},
+  krasnozem:{name:'Tertiary basalt: Ferrosol (krasnozem)',diff:2,note:'Deep red Ferrosols. High liquid limit, but also a high plastic limit. Don’t judge by LL alone.',
+    gen(){const a=rnd(.2,.35);return{layers:[
+      L('Topsoil: clay loam, friable, red-brown','CL',mu('5YR',3,3),rnd(48,55),rnd(32,36),rnd(6,8),2,0,a),
+      L('Ferrosol clay: well structured, friable, red','LC',mu('2.5YR',3,6),rnd(57,67),rnd(35,41),rnd(8,11),4,a,3.2)],
+      rock:rnd(3.3,5),rockName:'basalt',floaterP:.1,flagP:null}}},
+  tertiary:{name:'Tertiary sediments (Ts)',diff:2,note:'Sandy clays over grey mottled clays. Launceston’s Tertiary sediments host many mapped landslides.',
+    gen(){const a=rnd(.25,.4),b=a+rnd(.6,1.0);const slip=Math.random()<.4;return{layers:[
+      L('Topsoil: sandy loam','SL',mu('10YR',4,2),rnd(23,28),rnd(16,19),rnd(2,4),2,0,a),
+      L('Sandy clay: medium plasticity, mottled','LC',mu('10YR',6,4),rnd(44,52),rnd(18,22),rnd(10,12),5,a,b),
+      L('Clay: high plasticity, grey mottled orange','MC',mu('5Y',6,2),rnd(58,66),rnd(21,25),rnd(14,16),7,b,3.2)],
+      rock:rnd(3.3,5),rockName:'siltstone',floaterP:0,flagP:slip?'landslip':null}}},
+  granite:{name:'Devonian granite (Dg)',diff:1,note:'Coastal sands over decomposed granite. Corestones (granite boulders) can fake refusal.',
+    gen(){const a=rnd(.2,.3),b=a+rnd(.6,1.0),r=b+rnd(.4,1.2);return{layers:[
+      L('Topsoil: loamy sand, dark','LS',mu('10YR',3,2),null,null,rnd(0,1),2,0,a),
+      L('Sand: fine to coarse, loose to medium dense','S',mu('10YR',6,3),null,null,rnd(0,.5),3,a,b),
+      L('Decomposed granite: clayey sand','CS',mu('10YR',7,4),rnd(22,27),rnd(15,18),rnd(2,4),10,b,3.2)],
+      rock:r,rockName:'granite',floaterP:.28,flagP:null}}},
+  triassic:{name:'Triassic sandstone (Rs)',diff:1,note:'Silty clays over weathered sandstone; rock is often shallow.',
+    gen(){const a=rnd(.2,.3),b=a+rnd(.6,1.0),r=b+rnd(.2,.7);return{layers:[
+      L('Topsoil: silty loam','L',mu('10YR',4,2),rnd(28,33),rnd(19,22),rnd(4,6),3,0,a),
+      L('Silty clay: medium plasticity, from sandstone','LC',mu('7.5YR',5,6),rnd(42,50),rnd(19,23),rnd(9,11),6,a,b),
+      L('Extremely weathered sandstone: clayey sand','CS',mu('10YR',7,6),rnd(21,25),rnd(15,18),rnd(1.5,3),12,b,3.2)],
+      rock:r,rockName:'sandstone',floaterP:.1,flagP:null}}},
+  fill:{name:'Owen Conglomerate + historic mine workings',diff:3,note:'Old mining town. Expect fill. Lots of fill. Mysterious fill.',
+    gen(){const a=rnd(.8,1.4);return{layers:[
+      L('FILL: gravelly sand with slag, brick, glass and a boot (uncontrolled)','SCL',mu('5YR',4,6),rnd(27,32),rnd(17,20),rnd(3,5),9,0,a,{fill:true}),
+      L('Clay: medium plasticity, grey-brown','LC',mu('10YR',5,2),rnd(42,48),rnd(20,23),rnd(9,11),5,a,3.2)],
+      rock:a+rnd(.8,1.4),rockName:'conglomerate',floaterP:.2,flagP:'fill'}}},
+  peat:{name:'Quaternary swamp & estuarine deposits (Qpm)',diff:3,note:'Low-lying coastal plain. Spongy ground underfoot. The cows look unimpressed.',
+    gen(){const a=rnd(.3,.5),b=a+rnd(.7,1.2);return{layers:[
+      L('Topsoil: PEAT, fibrous, very soft','L',mu('10YR',2,1),rnd(90,110),rnd(50,60),rnd(12,15),1,0,a,{organic:true,feel:'Spongy, fibrous, stains your fingers black.'}),
+      L('Organic clay: soft, estuarine','LC',mu('5Y',4,1),rnd(66,74),rnd(33,38),rnd(11,13),1.1,a,b,{organic:true}),
+      L('Clay: stiff, high plasticity','MC',mu('10YR',5,4),rnd(52,58),rnd(22,26),rnd(12,14),6,b,3.2)],
+      rock:rnd(3.3,5),rockName:'mudstone',floaterP:0,flagP:'soft'}}},
+};
+const SITES=[
+  {n:'Glenorchy',lon:147.27,lat:-42.83,geo:'dolerite'},{n:'Kingston',lon:147.31,lat:-42.98,geo:'dolerite'},
+  {n:'Howrah',lon:147.40,lat:-42.89,geo:'dolerite'},{n:'Brighton',lon:147.25,lat:-42.70,geo:'dolerite'},
+  {n:'Huonville',lon:147.04,lat:-43.03,geo:'dolerite'},{n:'Sorell',lon:147.56,lat:-42.78,geo:'basalt'},
+  {n:'Campbell Town',lon:147.49,lat:-41.93,geo:'basalt'},{n:'New Norfolk',lon:147.06,lat:-42.78,geo:'triassic'},
+  {n:'Oatlands',lon:147.37,lat:-42.30,geo:'triassic'},{n:'Swansea',lon:148.05,lat:-42.12,geo:'triassic'},
+  {n:'Launceston',lon:147.14,lat:-41.44,geo:'tertiary'},{n:'Scottsdale',lon:147.52,lat:-41.16,geo:'tertiary'},
+  {n:'Devonport',lon:146.36,lat:-41.22,geo:'krasnozem'},{n:'Burnie',lon:145.90,lat:-41.09,geo:'krasnozem'},
+  {n:'Ulverstone',lon:146.16,lat:-41.19,geo:'krasnozem'},{n:'St Helens',lon:148.22,lat:-41.32,geo:'granite'},
+  {n:'Bicheno',lon:148.24,lat:-41.87,geo:'granite'},{n:'Queenstown',lon:145.55,lat:-42.08,geo:'fill'},
+  {n:'Smithton',lon:145.12,lat:-40.86,geo:'peat'},
+];
+const HQ={n:'Moonah HQ',lon:147.29,lat:-42.85};
+const CLIENTS=['Bazza’s Budget Builds','Huon Valley Tiny Homes Co.','A retired couple from Melbourne (tree change)','Kingborough Dream Homes','Taswegian Granny Flats Pty Ltd','Some bloke called Steve','Derwent Valley Developments','Mainland investor (has never visited)','Spudland Constructions','Quoll & Co. Builders','Wombat Way Homes','The Council (they’re in a hurry)'];
+
+/* ---------- Gear & crew ---------- */
+const GEAR={
+  driver:{t:'Post driver',lv:[
+    {n:'Second-hand Christie post driver',d:'Ex-fencing contractor. Smells of two-stroke and regret.',adv:1,jam:.008},
+    {n:'New Christie Engineering post driver',d:'Faster drive, fewer jams.',cost:3200,adv:1.5,jam:.003},
+    {n:'Christie HD driver, trailer mounted',d:'Big hits. Pushes tubes like butter (mostly).',cost:7500,adv:2.1,jam:.001}]},
+  extract:{t:'Tube extraction',lv:[
+    {n:'Stillsons, a bar and persuasion',d:'30 min per tube and a sore back.',min:30},
+    {n:'Hydraulic tube extractor jack',d:'10 min per tube.',cost:1400,min:10}]},
+  rods:{t:'DCP rods',lv:[
+    {n:'Standard DCP rods',d:'5% chance per bouncing blow of getting stuck.',stuck:.05,free:45},
+    {n:'Hardened rods + rod puller',d:'Stuck chance under 2%; 15 min to free.',cost:950,stuck:.018,free:15}]},
+  locator:{t:'Service location',lv:[
+    {n:'Eyeballs and BYDA plans only',d:'Private services are invisible to you.'},
+    {n:'Cable & pipe locator',d:'Sweep the site to find live cables and metallic pipes. Can’t see PVC.',cost:3800}]},
+  crusher:{t:'Sample prep',lv:[
+    {n:'Mortar & pestle',d:'40 min per sample in prep & testing.',per:40},
+    {n:'Mechanical soil grinder',d:'30 min per sample. Your wrists thank you.',cost:1600,per:30}]},
+  ute:{t:'Ute',lv:[
+    {n:'Ute: bald tyres, 340,000 km',d:'9% chance of breakdown per trip.',bd:.09,spd:1},
+    {n:'Full service + new A/T tyres',d:'2% breakdown chance, a bit quicker.',cost:900,bd:.02,spd:1.06}]},
+};
+const CREW=[
+  {id:'dazza',n:'Dazza Kowalski',role:'Field hand',f:3,l:0,m:1,wage:260,sign:300,bio:'Has run a post driver through a bull-ant nest without blinking.',line:'You son of a bitch, I’m in!'},
+  {id:'priya',n:'Priya Raman',role:'Lab technician',f:0,l:3,m:0,wage:280,sign:300,bio:'Rolls a 3 mm thread by feel. Has strong opinions about tin tare weights.',line:'You calibrate your cone? …Fine. I’m in.'},
+  {id:'kev',n:'Old Mate Kev',role:'Plant & maintenance',f:1,l:0,m:3,wage:220,sign:200,bio:'Fixes anything with fencing wire, cable ties and a long stare.',line:'Yeah righto. Where’s the kettle?'},
+  {id:'jono',n:'Jono (the grad)',role:'Graduate geologist',f:1,l:1,m:0,wage:150,sign:100,bio:'Fresh out of UTAS. Asks “but why?” about everything. Annoyingly often useful.',line:'A real job?! Yes. YES.'},
+  {id:'shaz',n:'Shaz McGregor',role:'Senior field & lab tech',f:2,l:2,m:1,wage:360,sign:600,bio:'Twenty years on the West Coast. Has seen things in Queenstown fill.',line:'Fine. But I pick the radio station.'},
+  {id:'mags',n:'Mags Thornbury',role:'Lab & plant',f:0,l:2,m:2,wage:290,sign:350,bio:'Keeps the ovens at 105 °C and the crew at arm’s length.',line:'Don’t touch my balance.'},
+];
+const SV={
+  water:{n:'water service',col:'#4aa3ff',cost:650,min:90,rep:4,msg:'A geyser erupts from the tube hole. Somebody’s water is off. Call the plumber.'},
+  power:{n:'underground power cable',col:'#ff8a1a',cost:2200,min:180,rep:15,msg:'BANG. The shed lights die. Everyone is OK, this time. Incident report, the regulator, and a very long talk.'},
+  telecom:{n:'NBN lead-in',col:'#f4f4f4',cost:900,min:60,rep:6,msg:'You’ve cut the NBN lead-in. The neighbour’s streaming just died. Expect a Facebook group post.'},
+  sewer:{n:'sewer main',col:'#e7d9ad',cost:1400,min:180,rep:8,msg:'A smell rises. That’s the sewer main. TasWater would like a word.'},
+  storm:{n:'PVC stormwater pipe',col:'#9fb4b0',cost:350,min:60,rep:2,msg:'Crack: PVC stormwater. Cheap fix, mildly embarrassing.'},
+};
+const CLASSES=['A','S','M','H1','H2','E','P'];
+const FOOTINGS=[
+  {k:'strip',n:'Strip/pad footings or simple slab-on-ground',for:['A','S']},
+  {k:'raft',n:'Stiffened raft / waffle slab',for:['M']},
+  {k:'raftH',n:'Stiffened raft with deeper edge & internal beams',for:['H1','H2']},
+  {k:'eng',n:'Engineer-designed stiffened slab or footing system',for:['E']},
+  {k:'piers',n:'Engineer-designed piers / screw piles to competent ground',for:['P']},
+];
+const USCS=['SP','SM','SC','ML','CL','MH','CH','OH/Pt'];
+const HS=2.3;
+
+/* ---------- State ---------- */
+let S=null;
+const day=()=>Math.floor(S.t/1440)+1;
+const tod=()=>S.t%1440;
+const clock=t=>{const m=((t%1440)+1440)%1440;return String(Math.floor(m/60)).padStart(2,'0')+':'+String(Math.floor(m%60)).padStart(2,'0')};
+const dur=m=>{m=Math.round(m);const h=Math.floor(m/60),mm=m%60;return h?`${h}h ${String(mm).padStart(2,'0')}m`:`${mm} min`};
+const LIMIT={field:18*60,lab:22*60,drive:23*60+59};
+const gear=k=>GEAR[k].lv[S.gear[k]];
+const team=()=>CREW.filter(c=>S.team.includes(c.id));
+const skill=k=>team().reduce((a,c)=>a+c[k],0);
+const best=k=>team().slice().sort((a,b)=>b[k]-a[k])[0];
+const fieldMult=()=>Math.max(.5,1-.12*skill('f'));
+const labMult=()=>Math.max(.45,1-.13*skill('l'));
+const maintF=()=>Math.max(.2,1-.25*skill('m'));
+const wages=()=>team().reduce((a,c)=>a+c.wage,0);
+const site=n=>SITES.find(s=>s.n===n);
+const C=id=>S.contracts.find(c=>c.id===+id);
+function distKm(a,b){return Math.max(6,Math.hypot((a.lon-b.lon)*82,(a.lat-b.lat)*111)*1.28)}
+function locObj(){return S.loc==='HQ'?HQ:site(S.loc)}
+function driveMin(to){return (10+distKm(locObj(),to)/75*60)/gear('ute').spd}
+
+function newGame(){
+  S={v:1,t:420,money:6000,rep:30,loc:'HQ',team:[],gear:{driver:0,extract:0,rods:0,locator:0,crusher:0,ute:0},
+     contracts:[],nextId:1,feed:[],fog:false,seen:[{lon:HQ.lon,lat:HQ.lat,r:55}],tab:'map',sel:null,manual:0,stats:{done:0,failed:0,strikes:0,earned:0,perfect:0},started:false,over:false};
+  S.contracts.push(genContract('Glenorchy'));S.contracts.push(genContract('Kingston'));S.contracts.push(genContract());
+  eva('Command console online. Welcome to Tasmania.');
+}
+function genContract(force){
+  const busy=new Set(S.contracts.filter(c=>!['done','failed'].includes(c.status)).map(c=>c.town));
+  let pool=force?SITES.filter(s=>s.n===force):SITES.filter(s=>!busy.has(s.n));
+  if(!pool.length) pool=SITES;
+  const s=pick(pool),G=GEO[s.geo],dist=distKm(HQ,s),bh=rint(2,3);
+  const fee=Math.round((1500+dist*5.5+G.diff*450+bh*250)*rnd(.9,1.15)/10)*10;
+  const prof=G.gen();
+  const notes=[`Desk study: MRT geology map shows ${G.name}.`,G.note];
+  if(prof.flagP==='landslip') notes.push('Lot sits on a 12° slope. MRT landslide hazard mapping shows a “Medium” hazard band. Hummocky ground reported up-slope.');
+  if(prof.flagP==='fill') notes.push('Historic aerials show the lot was a mine waste dump in the 1960s.');
+  if(prof.flagP==='soft') notes.push('Client says the lawn “wobbles a bit” after rain.');
+  return {id:S.nextId++,town:s.n,geo:s.geo,client:pick(CLIENTS),fee,bh,
+    deadline:(S.t/1440|0)+1+rint(4,6)+Math.ceil(dist/180),repReq:(G.diff-1)*16+rint(0,8),
+    status:'offered',byda:null,prof,notes,site:null,bhs:[],logs:null,lab:null,penalties:[],planned:false,ovenEnd:0,ovenStart:0};
+}
+
+/* ---------- Feed, toasts ---------- */
+function eva(msg){S.feed.unshift({d:day(),t:clock(S.t),m:msg});S.feed=S.feed.slice(0,40)}
+function toast(msg,kind=''){const d=document.createElement('div');d.className='toast '+kind;d.textContent=msg;const tb=$('#toasts');tb.appendChild(d);while(tb.children.length>3)tb.firstChild.remove();setTimeout(()=>d.remove(),kind==='bad'?6500:4200)}
+function say(msg,kind){eva(msg);toast(msg,kind)}
+
+/* ---------- Time ---------- */
+function canSpend(m,kind){return tod()+m<=LIMIT[kind]}
+function need(m,kind,what){
+  if(canSpend(m,kind)) return true;
+  const lim={field:'daylight (field work stops at 18:00)',lab:'hours (the lab shuts at 22:00)',drive:'hours today (no driving past midnight)'}[kind];
+  toast(`Not enough ${lim} for ${what}: needs ${dur(m)}, it’s ${clock(S.t)}. End the day or do something shorter.`,'bad');return false;
+}
+function spend(m){S.t+=Math.round(m);ovens();save()}
+function ovens(){
+  S.contracts.forEach(c=>{
+    if((c.status==='oven1'||c.status==='oven2')&&S.t>=c.ovenEnd){
+      c.status=c.status==='oven1'?'prep':'measure';
+      eva(`#${c.id} ${c.town}: oven cycle complete. Samples ready.`);
+    }
+  });
+}
+function endDay(){
+  const away=S.loc!=='HQ';
+  const d=day();
+  S.t=d*1440+420;
+  let cost=wages(); const lines=[];
+  if(cost) lines.push(`Crew wages ${money(cost)}`);
+  if(away){cost+=140;lines.push('Motel in '+S.loc+' $140')}
+  if(d%7===0){cost+=450;lines.push('Weekly living expenses (rent, groceries, a slab for the crew) $450')}
+  S.money-=cost;
+  // overnight oven gremlins
+  S.contracts.forEach(c=>{if((c.status==='oven1'||c.status==='oven2')&&Math.random()<.06*maintF()){c.ovenEnd+=360;lines.push(`#${c.id}: the oven tripped the breaker overnight. +6 h on the cycle.`)}});
+  // expire contracts
+  S.contracts.forEach(c=>{
+    if(c.status==='offered'&&c.deadline-2<day()){c.status='gone'}
+    else if(!['done','failed','gone','offered'].includes(c.status)&&c.deadline<day()){c.status='failed';S.rep=clamp(S.rep-10,0,100);S.stats.failed++;lines.push(`#${c.id} ${c.town}: deadline missed. Contract lost. −10 reputation.`)}
+  });
+  S.contracts=S.contracts.filter(c=>c.status!=='gone'||false);
+  const offered=S.contracts.filter(c=>c.status==='offered').length;
+  const n=Math.min(rint(1,2),6-offered);
+  for(let i=0;i<n;i++) S.contracts.push(genContract());
+  ovens();
+  eva(`Day ${day()} begins. ${lines.join(' · ')||'Quiet night.'}`);
+  showModal(`<div class="sub">Day ${day()} · 07:00</div><h2>New day</h2>
+    <ul>${lines.map(l=>`<li>${esc(l)}</li>`).join('')||'<li>Quiet night. The ovens hummed.</li>'}</ul>
+    <p class="dim">${n} new contract${n===1?'':'s'} on the map. Balance ${money(S.money)}.</p>
+    <div class="row"><button class="btn go" data-act="closeModal">Get to work</button></div>`);
+  checkOver();render();
+}
+function checkOver(){
+  if(S.money<-2500||S.rep<=0){S.over=true;
+    showModal(`<div class="sub">Game over</div><h2>${S.money<-2500?'The bank took the ute.':'Nobody will hire you.'}</h2>
+    <p>You completed ${S.stats.done} assessments and earned ${money(S.stats.earned)} before it all went sideways.</p>
+    <div class="row"><button class="btn go" data-act="restart">Start a new career</button></div>`)}
+}
+
+/* ---------- Persistence ---------- */
+function save(){try{localStorage.setItem('gtt-save',JSON.stringify(S))}catch(e){}}
+function load(){try{const s=localStorage.getItem('gtt-save');return s?JSON.parse(s):null}catch(e){return null}}
+
+/* ---------- Rendering: HUD + tabs ---------- */
+function rank(){const r=S.rep;return r<20?'Probationary Geo':r<40?'Graduate Geo':r<60?'Engineering Geologist':r<80?'Senior Engineering Geologist':'The Dolerite Whisperer'}
+function renderHUD(){
+  const lim=S.loc==='HQ'?LIMIT.lab:LIMIT.field, left=Math.max(0,lim-tod());
+  $('#hud').innerHTML=`
+    <div class="brand">GROUND TRUTH<small>TASMANIA · GEOTECH OPS</small></div>
+    <div class="stat"><label>Day</label><b>${day()}</b></div>
+    <div class="stat"><label>Time</label><b>${clock(S.t)}</b></div>
+    <div class="stat"><label>${S.loc==='HQ'?'Lab hours left':'Daylight left'}</label><div class="bar" title="${dur(left)}"><i style="width:${clamp(left/660*100,0,100)}%"></i></div><span class="mono dim" style="font-size:11px">${dur(left)}</span></div>
+    <div class="stat"><label>Funds</label><b style="color:${S.money<0?'var(--bad)':'var(--fg)'}">${money(S.money)}</b></div>
+    <div class="stat"><label>Reputation · ${rank()}</label><div class="bar rep"><i style="width:${S.rep}%"></i></div><span class="mono dim" style="font-size:11px">${S.rep}/100</span></div>
+    <div class="stat"><label>Location</label><b style="font-size:14px">${esc(S.loc==='HQ'?'Moonah HQ':S.loc)}</b></div>
+    <div class="stat"><label>Crew</label><b style="font-size:13px">${team().map(c=>esc(c.n.split(' ')[0])).join(', ')||'Lone wolf'}</b></div>
+    <div class="spacer"></div>
+    <button class="btn" data-act="endDayAsk">End day ▸</button>`;
+}
+function renderTabs(){
+  const atSite=S.loc!=='HQ'&&siteContract();
+  const labN=S.contracts.filter(c=>['prep','measure','report','atLab'].includes(c.status)).length;
+  const tabs=[['map','Map'],...(atSite?[['site','Site works']]:[]),['lab','Lab & reports',labN],['crew','Crew'],['gear','Gear'],['manual','Field manual']];
+  if(S.tab==='site'&&!atSite) S.tab='map';
+  $('#tabs').innerHTML=tabs.map(([k,n,p])=>`<button class="tab" role="tab" aria-selected="${S.tab===k}" data-act="tab" data-arg="${k}">${n}${p?`<span class="pip">${p}</span>`:''}</button>`).join('');
+}
+function render(){if(!S)return;renderHUD();renderTabs();({map:renderMap,site:renderSite,lab:renderLab,crew:renderCrew,gear:renderGear,manual:renderManual})[S.tab]();save()}
+
+/* ---------- Map ---------- */
+const COAST=[[144.70,-40.66],[144.97,-40.72],[145.28,-40.76],[145.45,-40.88],[145.73,-40.99],[145.90,-41.05],[146.16,-41.14],[146.36,-41.17],[146.60,-41.15],[146.80,-41.06],[147.00,-40.98],[147.39,-41.00],[147.65,-40.85],[147.95,-40.74],[148.20,-40.85],[148.35,-40.99],[148.32,-41.30],[148.27,-41.50],[148.30,-41.80],[148.33,-42.05],[148.30,-42.24],[148.02,-42.30],[147.95,-42.55],[147.90,-42.80],[148.00,-43.05],[147.98,-43.22],[147.80,-43.20],[147.65,-43.05],[147.45,-43.05],[147.35,-43.10],[147.10,-43.15],[147.02,-43.40],[146.83,-43.64],[146.55,-43.55],[146.20,-43.52],[146.03,-43.58],[145.92,-43.35],[145.62,-43.00],[145.50,-42.80],[145.25,-42.25],[145.10,-42.05],[144.95,-41.80],[144.75,-41.40],[144.65,-41.05],[144.62,-40.80]];
+const BRUNY=[[147.38,-43.10],[147.43,-43.18],[147.36,-43.36],[147.27,-43.50],[147.20,-43.38],[147.30,-43.24]];
+const MARIA=[[148.06,-42.55],[148.10,-42.62],[148.08,-42.72],[148.03,-42.68]];
+const P=(lon,lat)=>[(lon-144.4)*126+20,(-40.5-lat)*170+24];
+const poly=pts=>pts.map(p=>P(...p).map(v=>v.toFixed(1)).join(',')).join(' ');
+const ST={offered:['Offered','c-hv'],active:['Fieldwork','c-bk'],fieldDone:['Samples in ute','c-bk'],atLab:['At lab','c-ok'],oven1:['Oven 1','c-ok'],prep:['Prep & test','c-hv'],oven2:['Oven 2','c-ok'],measure:['Measure','c-hv'],report:['Write report','c-hv'],done:['Complete','c-dim'],failed:['Lost','c-bad']};
+function renderMap(){
+  const live=S.contracts.filter(c=>!['done','failed'].includes(c.status));
+  const sel=S.sel?C(S.sel):null;
+  const here=P(locObj().lon,locObj().lat), hq=P(HQ.lon,HQ.lat);
+  let route='';
+  if(sel){const t=P(site(sel.town).lon,site(sel.town).lat);route=`<line x1="${here[0]}" y1="${here[1]}" x2="${t[0]}" y2="${t[1]}" stroke="#efdb72" stroke-dasharray="4 4" stroke-width="1.5"/>`}
+  const grid=[];for(let x=0;x<580;x+=40)grid.push(`<line x1="${x}" y1="0" x2="${x}" y2="600" />`);for(let y=0;y<600;y+=40)grid.push(`<line x1="0" y1="${y}" x2="580" y2="${y}" />`);
+  const markers=live.map(c=>{const s=site(c.town),[x,y]=P(s.lon,s.lat),off=c.status==='offered',col=off?'#ff9b30':'#8bd897',isSel=S.sel===c.id,fz=fogged(s);
+    return `<g class="marker" tabindex="0" role="button" aria-label="Contract ${c.id} ${esc(c.town)}" data-act="sel" data-arg="${c.id}">
+      ${off?`<circle cx="${x}" cy="${y}" r="9" fill="none" stroke="${col}" class="pulse"/>`:''}
+      <circle cx="${x}" cy="${y}" r="${isSel?13:11}" fill="#0b1211" stroke="${col}" stroke-width="${isSel?3:2}" ${fz?'stroke-dasharray="3 3"':''}/>
+      <text x="${x}" y="${y+4.5}" text-anchor="middle" font-family="Saira Stencil One, Impact" font-size="13" fill="${col}">${c.id}</text>
+      <text x="${x+15}" y="${y+4}" font-family="IBM Plex Mono, monospace" font-size="10" fill="${fz?'#93a69e':'#c9d6cf'}">${fz?'Unscouted':esc(c.town)}</text></g>`}).join('');
+  const towns=SITES.filter(s=>!live.some(c=>c.town===s.n)).map(s=>{const[x,y]=P(s.lon,s.lat);return`<circle cx="${x}" cy="${y}" r="2" fill="#4d635b"/>`}).join('');
+  $('#view').innerHTML=`<div class="theatre">
+    <div class="mapbox"><svg viewBox="0 0 580 600" role="img" aria-label="Map of Tasmania with contract sites">
+      <defs><radialGradient id="glow" cx="50%" cy="45%" r="60%"><stop offset="0" stop-color="#1b3a2b"/><stop offset="1" stop-color="#0f2119"/></radialGradient></defs>
+      <rect width="580" height="600" fill="#0b1211"/>
+      <g stroke="#14231e" stroke-width="1">${grid.join('')}</g>
+      <polygon points="${poly(COAST)}" fill="url(#glow)" stroke="#8bd897" stroke-width="1.4"/>
+      <polygon points="${poly(BRUNY)}" fill="#12291f" stroke="#8bd897" stroke-width="1"/>
+      <polygon points="${poly(MARIA)}" fill="#12291f" stroke="#8bd897" stroke-width="1"/>
+      <text x="300" y="590" font-family="IBM Plex Mono" font-size="10" fill="#4d635b" letter-spacing="2">SOUTHERN OCEAN</text>
+      <text x="40" y="20" font-family="IBM Plex Mono" font-size="10" fill="#4d635b" letter-spacing="2">BASS STRAIT</text>
+      ${towns}${fogLayer()}${route}
+      <g class="marker" tabindex="0" role="button" aria-label="Moonah HQ" data-act="sel" data-arg="HQ">
+        <rect x="${hq[0]-9}" y="${hq[1]-9}" width="18" height="18" fill="#0b1211" stroke="#efdb72" stroke-width="2"/>
+        <text x="${hq[0]}" y="${hq[1]+4}" text-anchor="middle" font-family="Saira Stencil One, Impact" font-size="10" fill="#efdb72">HQ</text></g>
+      ${markers}
+      <g transform="translate(${here[0]-6},${here[1]-24})"><path d="M0 8h9l3-5h5l3 5v6H0z" fill="#ff9b30"/><circle cx="4" cy="14" r="2.4" fill="#0b1211"/><circle cx="16" cy="14" r="2.4" fill="#0b1211"/></g>
+    </svg><button class="btn sm fogbtn" data-act="fog" aria-pressed="${!!S.fog}">Fog of war: ${S.fog?'on':'off'}</button><div class="maplegend">◇ OFFERED &nbsp; ○ ACTIVE &nbsp; ▣ HQ &nbsp; ▬ YOUR UTE</div></div>
+    <div class="brief">${sel?briefing(sel):hqBrief()}${opsList(live)}
+      <div class="card"><div class="eyebrow">EVA log</div><div class="feed">${S.feed.slice(0,14).map(f=>`<div><b>D${f.d} ${f.t}</b> ${esc(f.m)}</div>`).join('')}</div></div>
+    </div></div>`;
+}
+function hqBrief(){
+  return `<div class="card"><div class="eyebrow">Base</div><h3>Moonah HQ: lab & office</h3>
+  <p class="dim">Ovens, balances, cone penetrometer, a kettle. Samples get unloaded here when you drive back.</p>
+  <div class="row">${S.loc!=='HQ'?`<button class="btn go" data-act="drive" data-arg="HQ">Drive to HQ (${dur(driveMin(HQ))})</button>`:'<span class="chip c-ok">You are here</span>'}
+  <button class="btn" data-act="tab" data-arg="lab">Open the lab</button></div>
+  <p class="dim" style="margin-bottom:0">Pick a numbered site on the map to read its contract briefing.</p></div>`;
+}
+function briefing(c){
+  const s=site(c.town),G=GEO[c.geo],km=Math.round(distKm(HQ,s)),dleft=c.deadline-day();
+  const bydaTxt=c.byda==null?'Not lodged':S.t>=c.byda?'Plans received':`Arrives D${Math.floor(c.byda/1440)+1} 07:00`;
+  let actions='';
+  if(c.status==='offered') actions=S.rep>=c.repReq?`<button class="btn go" data-act="accept" data-arg="${c.id}">Accept contract</button><button class="btn" data-act="decline" data-arg="${c.id}">Decline</button>`:`<span class="chip c-bad">Needs reputation ${c.repReq}</span>`;
+  else if(c.status==='active'){
+    actions=(c.byda==null?`<button class="btn" data-act="byda" data-arg="${c.id}">Lodge Before You Dig request</button>`:'')+
+      (S.loc===c.town?`<button class="btn go" data-act="tab" data-arg="site">Go to site works</button>`:`<button class="btn go" data-act="drive" data-arg="${c.id}">Drive to site (${dur(driveMin(s))})</button>`);
+  } else if(c.status==='fieldDone') actions=S.loc==='HQ'?'':`<button class="btn go" data-act="drive" data-arg="HQ">Take samples to HQ (${dur(driveMin(HQ))})</button>`;
+  else if(['atLab','oven1','prep','oven2','measure','report'].includes(c.status)) actions=`<button class="btn go" data-act="tab" data-arg="lab">Go to lab</button>`;
+  return `<div class="card"><div class="eyebrow">Contract #${c.id} · <span class="${ST[c.status][1]}">${ST[c.status][0]}</span></div>
+    <h3>${esc(c.town)}: residential site classification</h3>
+    <dl class="kv"><dt>Client</dt><dd>${esc(c.client)}</dd><dt>Fee</dt><dd>${money(c.fee)}</dd>
+    <dt>Deadline</dt><dd>Report by end of Day ${c.deadline} <span class="${dleft<=1?'c-bad':'dim'}">(${dleft<0?'overdue':dleft===0?'today':dleft+' days'})</span></dd>
+    <dt>Scope</dt><dd>${c.bh} boreholes to 2.5 m + DCP at each, lab testing, AS 2870 report</dd>
+    <dt>Distance</dt><dd>${km} km from HQ</dd><dt>Difficulty</dt><dd>${fogged(s)?'??? (unscouted)':'■'.repeat(G.diff)+'□'.repeat(3-G.diff)}</dd>
+    ${c.status!=='offered'?`<dt>BYDA</dt><dd>${bydaTxt}</dd>`:''}</dl>
+    ${fogged(s)?`<div class="tip" style="margin:10px 0">Unscouted area. You haven’t worked out this way yet, so there are no desk study notes. Accept the job blind, or drive through the region first to scout it.</div>`:`<ul style="margin:10px 0;padding-left:18px">${c.notes.map(n=>`<li>${esc(n)}</li>`).join('')}</ul>`}
+    <div class="row">${actions}</div></div>`;
+}
+function opsList(live){
+  if(!live.length) return '';
+  return `<div class="card"><div class="eyebrow">Operations</div><div class="ops">${live.map(c=>`<button class="op" data-act="sel" data-arg="${c.id}"><span class="n">${c.id}</span><span>${esc(c.town)} <span class="dim mono" style="font-size:12px">· due D${c.deadline} · ${money(c.fee)}</span></span><span class="chip ${ST[c.status][1]}">${ST[c.status][0]}${c.status.startsWith('oven')?' '+ovenLeft(c):''}</span></button>`).join('')}</div></div>`;
+}
+const ovenLeft=c=>dur(Math.max(0,c.ovenEnd-S.t));
+/* ---------- Fog of war ---------- */
+const kmRaw=(a,b)=>Math.hypot((a.lon-b.lon)*82,(a.lat-b.lat)*111);
+const scouted=s=>S.seen.some(p=>kmRaw(p,s)<p.r*.85);
+const fogged=s=>S.fog&&!scouted(s);
+function reveal(from,to){
+  const km=kmRaw(from,to),n=Math.ceil(km/25),add=(lon,lat,r)=>{if(!S.seen.some(p=>p.r>=r&&kmRaw(p,{lon,lat})<10))S.seen.push({lon,lat,r})};
+  const was=SITES.filter(scouted).length;
+  for(let i=1;i<n;i++)add(from.lon+(to.lon-from.lon)*i/n,from.lat+(to.lat-from.lat)*i/n,22);
+  add(to.lon,to.lat,55);
+  const now=SITES.filter(scouted).length;
+  if(S.fog&&now>was)toast(`Area scouted: ${now-was} more town${now-was>1?'s':''} revealed.`,'hv');
+}
+function fogLayer(){
+  if(!S.fog)return'';
+  const holes=S.seen.map(p=>{const[x,y]=P(p.lon,p.lat);return`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${(p.r*1.53).toFixed(1)}" fill="#000"/>`}).join('');
+  return`<defs><filter id="fogblur" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="14"/></filter>
+    <pattern id="fogpat" width="6" height="6" patternUnits="userSpaceOnUse"><rect width="6" height="6" fill="#090e0d"/><path d="M0 6L6 0" stroke="#15201d" stroke-width="1"/></pattern>
+    <mask id="fogmask" maskUnits="userSpaceOnUse" x="0" y="0" width="580" height="600"><rect width="580" height="600" fill="#fff"/><g filter="url(#fogblur)">${holes}</g></mask></defs>
+    <rect width="580" height="600" fill="url(#fogpat)" opacity=".94" mask="url(#fogmask)"/>
+    <polygon points="${poly(COAST)}" fill="none" stroke="#8bd897" stroke-width="1" opacity=".22"/>`;
+}
+
+/* ---------- Actions ---------- */
+const ACT={
+  tab(k){S.tab=k;render()},
+  sel(id){S.sel=id==='HQ'?null:+id;S.tab='map';render()},
+  closeModal(){closeModal()},
+  restart(){closeModal();try{localStorage.removeItem('gtt-save')}catch(e){};newGame();intro()},
+  accept(id){const c=C(id);c.status='active';say(`Contract #${c.id} accepted: ${c.town}.`);render()},
+  decline(id){S.contracts=S.contracts.filter(c=>c.id!==+id);S.sel=null;eva('Contract declined.');render()},
+  byda(id){const c=C(id);c.byda=(day()+2-1)*1440+420;say(`BYDA request lodged for ${c.town}. Plans arrive Day ${day()+2}, 07:00 (two business days).`);render()},
+  drive(arg){drive(arg)},
+  endDayAsk(){
+    const atSite=S.loc!=='HQ';
+    showModal(`<div class="sub">${clock(S.t)} · Day ${day()}</div><h2>Call it a day?</h2>
+     <p>Wages ${money(wages())}${atSite?' plus a $140 motel in '+esc(S.loc):''}${day()%7===0?' plus weekly living expenses $450':''}. Ovens keep running overnight.</p>
+     <div class="row"><button class="btn go" data-act="endDay">Sleep</button><button class="btn" data-act="closeModal">Keep working</button></div>`)},
+  endDay(){closeModal();endDay()},
+  hire(id){const p=CREW.find(c=>c.id===id);if(S.money<p.sign){toast('Insufficient funds.','bad');return}
+    S.money-=p.sign;S.team.push(id);say(`${p.n}: “${p.line}”`,'hv');render()},
+  fire(id){const p=CREW.find(c=>c.id===id);S.team=S.team.filter(x=>x!==id);say(`${p.n} has left the crew.`);render()},
+  buy(k){const g=GEAR[k],nx=g.lv[S.gear[k]+1];if(!nx)return;if(S.money<nx.cost){toast('Insufficient funds.','bad');return}
+    S.money-=nx.cost;S.gear[k]++;say(`Purchased: ${nx.n}.`,'hv');render()},
+  man(i){S.manual=+i;render()},
+  fog(){S.fog=!S.fog;eva(S.fog?'Fog of war enabled. Unscouted regions hidden.':'Fog of war lifted.');render()},
+};
+document.addEventListener('click',e=>{const b=e.target.closest('[data-act]');if(!b||b.disabled)return;const f=ACT[b.dataset.act];if(f){e.preventDefault();f(b.dataset.arg,b)}});
+document.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&e.target.matches('g.marker')){e.preventDefault();e.target.dispatchEvent(new MouseEvent('click',{bubbles:true}))}});
+
+function drive(arg){
+  const to=arg==='HQ'?HQ:site(C(arg).town),name=arg==='HQ'?'HQ':C(arg).town;
+  if(S.loc===name) return;
+  let m=driveMin(to);
+  if(!need(m,'drive','the drive')) return;
+  const ev=[];
+  if(Math.random()<gear('ute').bd*maintF()){m+=skill('m')>=2?20:60;S.money-=120;ev.push(skill('m')>=2?`Flat tyre. ${best('m').n} swaps it in 20 min.`:'The ute breaks down. Roadside assist, an hour and $120.')}
+  const r=Math.random();
+  if(r<.12){m+=30;ev.push('Roadworks on the highway. Stop/Slow lollipop for 30 min.')}
+  else if(r<.2){m+=5;ev.push('A wombat crosses the road extremely slowly. Worth it.')}
+  else if(r<.26){m+=15;ev.push('Stuck behind a log truck up the hill.')}
+  if(tod()+m>20*60&&Math.random()<.25){S.money-=480;ev.push('Night driving: you clip a wallaby. Bull bar dented, $480. Poor wallaby.')}
+  const km=distKm(locObj(),to);S.money-=km*.3;
+  reveal(locObj(),to);
+  spend(m);S.loc=name;
+  let unloaded=0;
+  if(name==='HQ'){S.contracts.forEach(c=>{if(c.status==='fieldDone'){c.status='atLab';unloaded++}})}
+  say(`Arrived at ${name==='HQ'?'Moonah HQ':name} (${dur(m)}, fuel ${money(km*.3)}).${unloaded?` ${unloaded} contract sample set${unloaded>1?'s':''} unloaded to the lab.`:''}`);
+  ev.forEach(e=>toast(e,'hv'));ev.forEach(eva);
+  S.tab=name==='HQ'?(unloaded?'lab':'map'):'site';
+  render();
+}
+function siteContract(){return S.contracts.find(c=>c.town===S.loc&&c.status==='active')}
+
+/* ---------- Modal ---------- */
+let modalCleanup=null;
+function showModal(html,cleanup){closeModal(true);modalCleanup=cleanup||null;$('#modalRoot').innerHTML=`<div class="modal" role="dialog" aria-modal="true"><div class="sheet">${html}</div></div>`;const f=$('#modalRoot .sheet button');f&&f.focus({preventScroll:true})}
+function closeModal(silent){if(modalCleanup){const f=modalCleanup;modalCleanup=null;f()}$('#modalRoot').innerHTML='';if(!silent)render()}
+function sheet(){return $('#modalRoot .sheet')}
+function setupCanvas(cv,w,h){const d=window.devicePixelRatio||1;cv.width=w*d;cv.height=h*d;cv.style.aspectRatio=`${w}/${h}`;const x=cv.getContext('2d');x.setTransform(d,0,0,d,0,0);return x}
+function cpos(cv,e,w){const r=cv.getBoundingClientRect(),k=w/r.width;return[(e.clientX-r.left)*k,(e.clientY-r.top)*k]}
+let rafId=0;function loop(fn){cancelAnimationFrame(rafId);let last=performance.now();const f=ts=>{fn((ts-last)/1000,ts);last=ts;rafId=requestAnimationFrame(f)};rafId=requestAnimationFrame(f)}
+function stopLoop(){cancelAnimationFrame(rafId)}
+
+/* ============================================================
+   SITE WORKS
+   ============================================================ */
+const GW=16,GH=10,CS=30;
+function genSite(c){
+  const fw=rint(6,8),fh=rint(4,5),fx=rint(3,GW-fw-3),fy=rint(2,GH-fh-2);
+  const left=Math.random()<.5,shed={x:left?1:GW-3,y:1,w:2,h:2};
+  const sx=left?shed.x+1:shed.x,sy=shed.y+shed.h;
+  const path=(x1,y1,x2,y2,vFirst=true)=>{const cs=[[x1,y1]];let x=x1,y=y1;
+    const v=()=>{while(y!==y2){y+=Math.sign(y2-y);cs.push([x,y])}},h=()=>{while(x!==x2){x+=Math.sign(x2-x);cs.push([x,y])}};
+    if(vFirst){v();h()}else{h();v()}return cs};
+  const fronts=[];while(fronts.length<4){const v=rint(1,GW-2);if(!fronts.includes(v)&&Math.abs(v-sx)>0)fronts.push(v)}
+  const [wm,pp,np,sw]=fronts;
+  const svc=[];
+  const sewRear=Math.random()<.6;
+  svc.push({t:'sewer',cells:sewRear?Array.from({length:GW},(_,x)=>[x,0]):Array.from({length:GH},(_,y)=>[left?GW-1:0,y]),reg:true,loc:false,depth:rnd(.7,1.1)});
+  svc.push({t:'water',cells:[[wm,GH-1]],reg:true,loc:true,depth:.45});
+  svc.push({t:'water',cells:path(wm,GH-1,sx,sy,Math.random()<.5),reg:false,loc:Math.random()<.5,depth:rnd(.3,.5),priv:true});
+  svc.push({t:'power',cells:path(pp,GH-1,sx,sy,Math.random()<.5),reg:false,loc:true,depth:rnd(.4,.6),priv:true});
+  svc.push({t:'telecom',cells:path(np,GH-1,sx,sy,Math.random()<.5),reg:true,loc:true,depth:rnd(.3,.45)});
+  svc.push({t:'storm',cells:path(sx,sy,sw,GH-1,false),reg:false,loc:false,depth:rnd(.25,.4),priv:true});
+  svc.forEach(s=>{if(s.reg){const o=Math.random()<.4?pick([[1,0],[-1,0],[0,1],[0,-1]]):[0,0];s.off=o}});
+  c.site={fp:{x:fx,y:fy,w:fw,h:fh},shed,feat:{wm,pp,np,sw,io:sewRear?[sx,1]:[left?GW-2:1,sy]},svc,located:false,revealed:[]};
+}
+const svcAt=(c,x,y)=>c.site.svc.find(s=>s.cells.some(([a,b])=>a===x&&b===y));
+const inFP=(c,x,y,pad=0)=>{const f=c.site.fp;return x>=f.x-pad&&x<f.x+f.w+pad&&y>=f.y-pad&&y<f.y+f.h+pad};
+const inShed=(c,x,y)=>{const s=c.site.shed;return x>=s.x&&x<s.x+s.w&&y>=s.y&&y<s.y+s.h};
+
+function drawPlan(ctx,c,hover){
+  const W=GW*CS,H=(GH+1.6)*CS,st=c.site;
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='#24382a';ctx.fillRect(0,0,W,GH*CS);
+  // grass texture
+  for(let i=0;i<260;i++){const x=(i*73)%W,y=(i*131)%(GH*CS);ctx.fillStyle=i%2?'#2a4130':'#203325';ctx.fillRect(x,y,2,2)}
+  if(c.prof.flagP==='landslip'){ctx.strokeStyle='rgba(239,219,114,.35)';ctx.lineWidth=1.2;for(let k=0;k<4;k++){ctx.beginPath();for(let x=0;x<W;x+=6)ctx.lineTo(x,14+k*9+Math.sin(x/14+k)*3);ctx.stroke()}ctx.fillStyle='rgba(239,219,114,.7)';ctx.font='10px IBM Plex Mono';ctx.fillText('hummocky ground, tension cracks ↑',W-230,58)}
+  if(c.prof.flagP==='fill'){for(let i=0;i<90;i++){ctx.fillStyle=['#6b5a48','#8a7b6a','#4d4038','#9a3d2a'][i%4];ctx.fillRect((i*97)%W,(i*53)%(GH*CS),3,3)}ctx.fillStyle='rgba(239,219,114,.75)';ctx.font='10px IBM Plex Mono';ctx.fillText('bricks & slag poking through the grass',8,GH*CS-40)}
+  if(c.prof.flagP==='soft'){ctx.fillStyle='rgba(74,163,255,.18)';ctx.beginPath();ctx.ellipse(W*.6,GH*CS*.45,120,50,0,0,7);ctx.fill();ctx.fillStyle='rgba(239,219,114,.75)';ctx.font='10px IBM Plex Mono';ctx.fillText('soggy, reeds',W*.6-30,GH*CS*.45)}
+  // grid
+  ctx.strokeStyle='rgba(255,255,255,.05)';ctx.lineWidth=1;for(let x=0;x<=GW;x++){ctx.beginPath();ctx.moveTo(x*CS,0);ctx.lineTo(x*CS,GH*CS);ctx.stroke()}for(let y=0;y<=GH;y++){ctx.beginPath();ctx.moveTo(0,y*CS);ctx.lineTo(W,y*CS);ctx.stroke()}
+  // road
+  ctx.fillStyle='#3a3f3d';ctx.fillRect(0,GH*CS+10,W,H-GH*CS-10);ctx.fillStyle='#6d7270';ctx.fillRect(0,GH*CS+8,W,3);
+  ctx.strokeStyle='#efdb72';ctx.setLineDash([14,12]);ctx.beginPath();ctx.moveTo(0,H-12);ctx.lineTo(W,H-12);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#93a69e';ctx.font='10px IBM Plex Mono';ctx.fillText('STREET',6,H-18);
+  // boundary
+  ctx.strokeStyle='#cfd8d3';ctx.setLineDash([6,4]);ctx.strokeRect(1,1,W-2,GH*CS-2);ctx.setLineDash([]);
+  // footprint
+  const f=st.fp;ctx.fillStyle='rgba(255,155,48,.08)';ctx.fillRect(f.x*CS,f.y*CS,f.w*CS,f.h*CS);ctx.strokeStyle='#ff9b30';ctx.lineWidth=2;ctx.setLineDash([8,5]);ctx.strokeRect(f.x*CS,f.y*CS,f.w*CS,f.h*CS);ctx.setLineDash([]);
+  ctx.fillStyle='#ff9b30';ctx.font='600 11px IBM Plex Sans Condensed';ctx.fillText('PROPOSED DWELLING',f.x*CS+6,f.y*CS+15);
+  // shed
+  const s=st.shed;ctx.fillStyle='#5b4632';ctx.fillRect(s.x*CS,s.y*CS,s.w*CS,s.h*CS);ctx.strokeStyle='#8c6c4c';ctx.strokeRect(s.x*CS,s.y*CS,s.w*CS,s.h*CS);
+  ctx.fillStyle='#e9d9c4';ctx.font='10px IBM Plex Mono';ctx.fillText('old shed',s.x*CS+4,s.y*CS+14);
+  // surface features
+  const ft=st.feat,cx=x=>x*CS+CS/2;
+  const box=(x,y,col,lab)=>{ctx.fillStyle=col;ctx.fillRect(cx(x)-7,y*CS+CS-12,14,10);ctx.fillStyle='#0b1211';ctx.font='bold 8px IBM Plex Mono';ctx.fillText(lab,cx(x)-6,y*CS+CS-4)};
+  box(ft.wm,GH-1,'#4aa3ff','WM');box(ft.pp,GH-1,'#9aa3a0','PIL');box(ft.np,GH-1,'#cfcfcf','NBN');
+  ctx.fillStyle='#e7d9ad';ctx.beginPath();ctx.arc(cx(ft.io[0]),ft.io[1]*CS+CS/2,6,0,7);ctx.fill();ctx.fillStyle='#0b1211';ctx.font='bold 7px IBM Plex Mono';ctx.fillText('IO',cx(ft.io[0])-5,ft.io[1]*CS+CS/2+3);
+  ctx.fillStyle='#9fb4b0';ctx.fillRect(cx(ft.sw)-5,GH*CS+2,10,6);
+  // services
+  const line=(cells,col,dash,off=[0,0],w=3)=>{ctx.strokeStyle=col;ctx.lineWidth=w;ctx.setLineDash(dash);ctx.beginPath();cells.forEach(([x,y],i)=>{const X=(x+off[0])*CS+CS/2,Y=(y+off[1])*CS+CS/2;i?ctx.lineTo(X,Y):ctx.moveTo(X,Y)});if(cells.length===1){const[x,y]=cells[0];ctx.moveTo((x+off[0])*CS+CS/2,(y+off[1])*CS+CS/2);ctx.lineTo((x+off[0])*CS+CS/2,GH*CS+8)}ctx.stroke();ctx.setLineDash([])};
+  const bydaOn=c.byda!=null&&S.t>=c.byda;
+  if(bydaOn) st.svc.filter(v=>v.reg).forEach(v=>line(v.cells,SV[v.t].col,[3,5],v.off,2));
+  if(st.located) st.svc.filter(v=>v.loc).forEach(v=>line(v.cells,SV[v.t].col,[],[0,0],3));
+  st.revealed.forEach(i=>{const v=st.svc[i];line(v.cells,SV[v.t].col,[10,3],[0,0],4)});
+  // BHs
+  c.bhs.forEach((b,i)=>{const X=b.x*CS+CS/2,Y=b.y*CS+CS/2;
+    const col=b.st==='blocked'?'#ff6455':b.st==='done'?'#8bd897':'#efdb72';
+    ctx.fillStyle='#0b1211';ctx.beginPath();ctx.arc(X,Y,10,0,7);ctx.fill();ctx.strokeStyle=col;ctx.lineWidth=2.5;ctx.beginPath();ctx.arc(X,Y,10,0,7);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(X-5,Y);ctx.lineTo(X+5,Y);ctx.moveTo(X,Y-5);ctx.lineTo(X,Y+5);ctx.stroke();
+    ctx.fillStyle=col;ctx.font='600 11px IBM Plex Mono';ctx.fillText('BH'+(i+1),X+12,Y-8)});
+  if(hover){ctx.strokeStyle='rgba(239,219,114,.8)';ctx.lineWidth=1;ctx.strokeRect(hover[0]*CS+1,hover[1]*CS+1,CS-2,CS-2)}
+}
+
+function renderSite(){
+  const c=siteContract();if(!c){S.tab='map';return render()}
+  if(!c.site){genSite(c)}
+  const bydaOn=c.byda!=null&&S.t>=c.byda,planning=!c.planned;
+  const allDone=c.bhs.length&&c.bhs.every(b=>b.st==='done'),allX=c.bhs.length&&c.bhs.every(b=>['extracted','done'].includes(b.st)||(b.st==='driven'));
+  const fm=fieldMult();
+  const reloc=S.reloc;
+  const bhHTML=c.bhs.map((b,i)=>{
+    const steps=[];
+    if(b.st==='blocked') steps.push(`<span class="chip c-bad">Blocked</span><button class="btn sm" data-act="relocate" data-arg="${i}">${reloc===i?'Click the plan…':'Relocate'}</button>`);
+    if(b.st==='planned'){
+      if(!b.pot) steps.push(`<button class="btn sm" data-act="pothole" data-arg="${i}">Pothole to 0.5 m (${dur(20*fm)})</button>`);
+      steps.push(`<button class="btn sm go" data-act="driver" data-arg="${i}">Drive tube</button>`);
+      steps.push(`<button class="btn sm" data-act="relocate" data-arg="${i}">${reloc===i?'Click the plan…':'Move'}</button>`);
+    }
+    if(b.st==='driven') steps.push(`<button class="btn sm go" data-act="extract" data-arg="${i}">Extract tube (${dur(gear('extract').min*fm)})</button>`);
+    if(b.st==='extracted') steps.push(`<button class="btn sm go" data-act="dcp" data-arg="${i}">Run DCP</button>`);
+    if(b.st==='done') steps.push(`<span class="chip c-ok">Tube ${b.depth.toFixed(2)} m${b.ref!=null?' (refusal)':''} · DCP ${b.dcpRef!=null?'refusal '+b.dcpRef.toFixed(2)+' m':'to 2.0 m'}</span><button class="btn sm" data-act="core" data-arg="${i}">View core</button>`);
+    if(b.st==='extracted') steps.push(`<button class="btn sm" data-act="core" data-arg="${i}">View core</button>`);
+    return `<div class="bh"><header><b>BH${i+1}</b><span class="mono dim" style="font-size:12px">cell ${b.x},${b.y}${b.pot?' · potholed':''}${inFP(c,b.x,b.y,1)?'':' · <span class="c-hv">outside footprint</span>'}</span></header><div class="steps">${steps.join('')}</div></div>`}).join('');
+  const logged=c.logs&&c.logs.done;
+  const deep=deepest(c);
+  $('#view').innerHTML=`<div class="sitegrid">
+   <div><div class="planwrap"><canvas id="plan"></canvas></div>
+    <div class="legend" style="margin-top:8px">${Object.entries(SV).map(([k,v])=>`<span style="--c:${v.col}">${v.n}</span>`).join('')}</div>
+    <p class="dim" style="font-size:13px">Dashed thin lines are BYDA plans (indicative only, can be offset). Solid lines are your locator mark-out. Each grid cell is 2 m.</p></div>
+   <div class="brief">
+    <div class="card"><div class="eyebrow">Contract #${c.id} · ${esc(c.town)}</div><h3>${planning?'Plan your boreholes':'Field works'}</h3>
+     ${planning?`<p>Click the plan to place <b>${c.bh}</b> borehole${c.bh>1?'s':''} (up to ${c.bh+1}). Put them inside or within 2 m of the proposed dwelling, and keep clear of services.</p>
+      <div class="tip">Look for surface clues: water meter (WM), power pillar (PIL), NBN pit, sewer inspection opening (IO), shed downpipes. <b>BYDA only shows assets owned by utilities.</b> Private lines from the meter to the shed are on you.</div>
+      <div class="row" style="margin-top:10px">
+       ${bydaOn?'<span class="chip c-ok">BYDA plans shown</span>':c.byda!=null?`<span class="chip c-hv">BYDA plans arrive D${Math.floor(c.byda/1440)+1}</span>`:'<span class="chip c-bad">No BYDA lodged</span>'}
+       ${S.gear.locator?`<button class="btn sm" data-act="sweep" ${c.site.located?'disabled':''}>${c.site.located?'Site swept':'Sweep with locator ('+dur(25*fm)+')'}</button>`:''}
+       <button class="btn go" data-act="confirmBH" ${c.bhs.length>=c.bh?'':'disabled'}>Confirm locations</button></div>`:
+     `<p class="dim">Pothole first if you’re unsure about services. Drive the tube, extract it, then run a DCP beside each hole. Field work stops at 18:00.</p>
+      <div class="bhlist">${bhHTML}</div>
+      <div class="row" style="margin-top:10px">
+       <button class="btn ${logged?'':'go'}" data-act="logLayers" ${deep&&c.bhs.every(b=>['extracted','done'].includes(b.st))&&!logged?'':'disabled'}>${logged?'Layers logged ✓':'Log soil layers (ribbon + colour)'}</button>
+       <button class="btn go" data-act="packUp" ${allDone&&logged?'':'disabled'}>Pack up & load samples (${dur(15*fm)})</button></div>`}
+    </div>
+    ${briefing(c)}
+   </div></div>`;
+  const cv=$('#plan'),ctx=setupCanvas(cv,GW*CS,(GH+1.6)*CS);drawPlan(ctx,c);
+  cv.onpointermove=e=>{const[x,y]=cpos(cv,e,GW*CS);const gx=Math.floor(x/CS),gy=Math.floor(y/CS);drawPlan(ctx,c,gy<GH?[gx,gy]:null)};
+  cv.onpointerleave=()=>drawPlan(ctx,c);
+  cv.onclick=e=>{const[x,y]=cpos(cv,e,GW*CS);const gx=Math.floor(x/CS),gy=Math.floor(y/CS);if(gy>=GH||gx<0||gx>=GW)return;
+    if(inShed(c,gx,gy)){toast('That’s the shed. The post driver won’t go through a concrete slab.','bad');return}
+    if(planning){const i=c.bhs.findIndex(b=>b.x===gx&&b.y===gy);
+      if(i>=0)c.bhs.splice(i,1);else if(c.bhs.length<c.bh+1)c.bhs.push(newBH(c,gx,gy));else toast(`Max ${c.bh+1} boreholes for this scope.`);
+      renderSite();save();return}
+    if(S.reloc!=null){const b=c.bhs[S.reloc];if(c.bhs.some(o=>o.x===gx&&o.y===gy)){toast('There’s already a borehole there.');return}
+      Object.assign(b,newBH(c,gx,gy));S.reloc=null;toast(`BH moved to ${gx},${gy}.`);renderSite();save()}};
+}
+function newBH(c,x,y){const fp=c.prof.floaterP;return{x,y,st:'planned',pot:false,depth:0,ref:null,floater:Math.random()<fp?rnd(.5,Math.min(c.prof.rock,2.4)-.1):null,flBlows:rint(4,10),dcpRef:null,dcp:[]}}
+function deepest(c){const ex=c.bhs.filter(b=>['extracted','done'].includes(b.st));return ex.length?ex.reduce((a,b)=>b.depth>a.depth?b:a):null}
+function layersTo(c,d){return c.prof.layers.filter(l=>l.top<d-.02)}
+function layerAt(c,d){return c.prof.layers.find(l=>d>=l.top&&d<l.bot)||c.prof.layers[c.prof.layers.length-1]}
+
+Object.assign(ACT,{
+  relocate(i){S.reloc=S.reloc===+i?null:+i;renderSite()},
+  sweep(){const c=siteContract(),m=25*fieldMult();if(!need(m,'field','a locator sweep'))return;spend(m);c.site.located=true;
+    say('Locator sweep done. Live cables and metallic pipes marked in paint. PVC and clay pipes don’t show up on a locator.');render()},
+  confirmBH(){const c=siteContract();const out=c.bhs.filter(b=>!inFP(c,b.x,b.y,1)).length;
+    const inside=c.bhs.length-out;
+    if(inside<c.bh){toast(`At least ${c.bh} boreholes need to be within 2 m of the proposed dwelling or the engineer will bounce your report.`,'bad');return}
+    const m=20*fieldMult();if(!need(m,'field','site set-up'))return;spend(m);c.planned=true;
+    eva(`${c.town}: site set up. Induction done, cones out, ute parked off the lawn.`);render()},
+  pothole(i){const c=siteContract(),b=c.bhs[+i],m=20*fieldMult();if(!need(m,'field','potholing'))return;spend(m);b.pot=true;
+    const s=svcAt(c,b.x,b.y);
+    if(s&&s.depth<=.6){b.st='blocked';c.site.revealed.push(c.site.svc.indexOf(s));say(`Potholing BH${+i+1}: exposed a ${SV[s.t].n} at ${s.depth.toFixed(2)} m. Nice catch. Relocate the borehole.`,'hv')}
+    else say(`BH${+i+1} potholed to 0.5 m. All clear.`);render()},
+  driver(i){const c=siteContract();if(!need(25*fieldMult(),'field','driving a tube'))return;mgDriver(c,+i)},
+  extract(i){const c=siteContract(),b=c.bhs[+i],m=gear('extract').min*fieldMult();if(!need(m,'field','tube extraction'))return;spend(m);b.st='extracted';
+    eva(`BH${+i+1} tube extracted (${dur(m)}).`);coreModal(c,+i)},
+  dcp(i){const c=siteContract();if(!need(15*fieldMult(),'field','a DCP test'))return;mgDCP(c,+i)},
+  core(i){coreModal(siteContract(),+i)},
+  logLayers(){const c=siteContract();logFlow(c)},
+  packUp(){const c=siteContract(),m=15*fieldMult();if(!need(m,'field','packing up'))return;spend(m);
+    c.status='fieldDone';c.samples=c.bhs.reduce((a,b)=>a+layersTo(c,b.depth).length,0);
+    say(`${c.town}: ${c.samples} samples bagged, labelled and in the esky. Drive them back to HQ.`);S.tab='map';S.sel=c.id;render()},
+});
+
+/* ---------- Strike! ---------- */
+function strike(c,i,s){
+  const b=c.bhs[i],v=SV[s.t];b.st='blocked';b.depth=0;
+  c.site.revealed.push(c.site.svc.indexOf(s));S.money-=v.cost;S.rep=clamp(S.rep-v.rep,0,100);S.stats.strikes++;
+  c.penalties.push(`Struck a ${v.n} at BH${i+1} (${money(v.cost)}, −${v.rep} rep)`);
+  spend(v.min*.5);
+  showModal(`<div class="sub">Incident · BH${i+1}</div><h2 class="c-bad">Service strike!</h2><p style="font-size:17px">${esc(v.msg)}</p>
+   <p class="mono">Repairs ${money(v.cost)} · Reputation −${v.rep} · Lost time ${dur(v.min*.5)}</p>
+   <div class="tip">${s.priv?'This was a <b>private</b> service. BYDA doesn’t show private services; they run from the meter or pillar to buildings. Trace them from the surface clues, use a locator, or pothole first.':s.loc?'A locator sweep would have found this one. BYDA plans are indicative and can be off by metres.':'Non-metallic pipes don’t show on a locator. Potholing (non-destructive digging) to 0.5 m is the only sure way.'}</div>
+   <div class="row"><button class="btn go" data-act="closeModal">Relocate the borehole</button></div>`);
+  checkOver();
+}
+
+/* ---------- Minigame: Christie post driver ---------- */
+function mgDriver(c,i){
+  const b=c.bhs[i],G=gear('driver'),fm=fieldMult(),fs=skill('f');
+  let depth=0,strikes=0,phase=Math.random()*6,jam=false,stop=null,flash=0,hit=0,setupPaid=false;
+  const target=2.5;const svc=b.pot?null:svcAt(c,b.x,b.y);
+  const obs=()=>Math.min(b.floater??9,c.prof.rock);
+  showModal(`<div class="sub">BH${i+1} · ${esc(G.n)}</div><h2>Drive the push tube</h2>
+    <div class="tip">Strike when the needle is in the <b style="color:var(--radar)">green</b>; the bright centre gives the biggest push. Target: 2.5 m. If it bounces, you’ve met refusal: rock or a floater (a boulder). Space bar works too.</div>
+    <canvas id="pd"></canvas><div class="msg" id="pdmsg">Tube on, driver on, ear muffs on.</div>
+    <div class="row"><button class="btn go" id="pdStrike">STRIKE</button><button class="btn" id="pdStop">Stop here & keep sample</button><span class="mono dim" id="pdStat"></span></div>`,()=>{stopLoop();document.removeEventListener('keydown',key)});
+  const cv=$('#pd'),ctx=setupCanvas(cv,560,300),msg=$('#pdmsg');
+  const finish=(why)=>{stopLoop();const m=(10+strikes*.5)*fm;spend(m);b.depth=r1(depth*100)/100;
+    if(why==='strike'){return}
+    b.st='driven';b.ref=why==='refusal'?b.depth:null;
+    eva(`BH${i+1}: tube driven to ${b.depth.toFixed(2)} m in ${strikes} strikes (${dur(m)}).`);
+    closeModal()};
+  const doStrike=()=>{
+    if(jam||stop)return;strikes++;
+    if(Math.random()<G.jam*maintF()){jam=true;const fix=skill('m')>=2?5:20;
+      msg.className='msg bad';msg.innerHTML=`Driver jammed! ${skill('m')>=2?esc(best('m').n)+' clears it in 5 min.':'Clearing it yourself: 20 min.'} <button class="btn sm" id="unjam">Clear jam</button>`;
+      $('#unjam').onclick=()=>{spend(fix*fm);jam=false;msg.className='msg';msg.textContent='Back in business.'};return}
+    const p=(Math.sin(phase)+1)/2,q=Math.abs(p-.82)<.035?1.5:(p>.7&&p<.94)?1:.35;
+    const lay=layerAt(c,depth);let adv=600/(lay.dcp+3)*G.adv*(1+.08*fs)*q/1000*rnd(.85,1.15);
+    hit=q;flash=1;
+    if(svc&&depth<svc.depth&&depth+adv>=svc.depth){depth=svc.depth;stopLoop();closeModal(true);finish('strike');strike(c,i,svc);render();return}
+    if(depth+adv>=obs()){depth=obs();stop='refusal';const isF=b.floater!=null&&b.floater<c.prof.rock;
+      msg.className='msg bad';msg.innerHTML=`BOUNCE. The tube won’t go any further at ${depth.toFixed(2)} m. Rock, or a floater?`;
+      $('#pdStrike').disabled=true;
+      $('#pdStop').textContent='Accept refusal';
+      const row=document.createElement('div');row.className='row';
+      row.innerHTML=`<button class="btn" id="pdOffset">Offset 0.5 m and re-drive (+15 min)</button>`;msg.after(row);
+      $('#pdOffset').onclick=()=>{spend((10+strikes*.5+15)*fm);strikes=0;depth=0;stop=null;b.floater=Math.random()<.3?rnd(.5,Math.min(c.prof.rock,2.4)-.1):null;
+        row.remove();$('#pdStrike').disabled=false;$('#pdStop').textContent='Stop here & keep sample';msg.className='msg';msg.textContent=isF?'New spot, fresh hole. Let’s see if that boulder’s gone…':'New spot, fresh hole.';};
+      return}
+    depth+=adv;
+    if(depth>=target){depth=target;stop='target';msg.className='msg';msg.textContent='2.5 m reached. Beautiful.';$('#pdStrike').disabled=true;$('#pdStop').textContent='Finish';return}
+    msg.className='msg';msg.textContent=q===1.5?'THUNK! Perfect strike.':q===1?'Solid hit.':'Glancing blow. Timing!';
+    if(q===1.5){cv.classList.remove('shake');void cv.offsetWidth;cv.classList.add('shake')}
+  };
+  const key=e=>{if(e.code==='Space'){e.preventDefault();doStrike()}};document.addEventListener('keydown',key);
+  $('#pdStrike').onclick=doStrike;
+  $('#pdStop').onclick=()=>{if(depth<.3&&!stop){toast('You need at least 0.3 m of core to log anything.');return}finish(stop==='refusal'?'refusal':'stop')};
+  loop(dt=>{
+    if(!jam&&!stop)phase+=dt*(2.2+layerAt(c,depth).dcp*.08);
+    flash=Math.max(0,flash-dt*3);
+    ctx.clearRect(0,0,560,300);
+    // ground section
+    const gx=160,gy=70,sc=84;
+    ctx.fillStyle='#0b1211';ctx.fillRect(0,0,560,300);
+    c.prof.layers.forEach(l=>{const y1=gy+l.top*sc,y2=gy+Math.min(l.bot,2.6)*sc;ctx.fillStyle=depth>=l.top?munsellRGB(l.mun.h,l.mun.v,l.mun.c):'#24302c';ctx.fillRect(gx-70,y1,140,y2-y1)});
+    ctx.fillStyle='#24382a';ctx.fillRect(gx-70,gy-6,140,6);
+    // depth ruler
+    ctx.fillStyle='#93a69e';ctx.font='10px IBM Plex Mono';for(let d=0;d<=2.5;d+=.5){ctx.fillRect(gx-82,gy+d*sc,8,1);ctx.fillText(d.toFixed(1),gx-112,gy+d*sc+3)}
+    // tube
+    const tubeLen=2.7*sc,top=gy+depth*sc-tubeLen;
+    ctx.fillStyle='#b8c2bf';ctx.fillRect(gx-6,top,12,tubeLen);ctx.fillStyle='#6d7672';ctx.fillRect(gx-6,top,3,tubeLen);
+    // driver
+    const bounce=flash*10;ctx.fillStyle='#ff9b30';ctx.fillRect(gx-18,top-46-bounce,36,46);ctx.fillStyle='#1b1205';ctx.font='bold 9px IBM Plex Mono';ctx.fillText('CHRISTIE',gx-21+3,top-20-bounce);
+    if(flash>.6){ctx.strokeStyle='#efdb72';ctx.lineWidth=2;for(let k=0;k<6;k++){const a=k/6*6.28;ctx.beginPath();ctx.moveTo(gx+Math.cos(a)*22,top+Math.sin(a)*8);ctx.lineTo(gx+Math.cos(a)*34,top+Math.sin(a)*12);ctx.stroke()}}
+    // meter
+    const mx=300,my=50,mw=230;ctx.fillStyle='#1d2826';ctx.fillRect(mx,my,mw,22);
+    ctx.fillStyle='rgba(139,216,151,.45)';ctx.fillRect(mx+mw*.7,my,mw*.24,22);ctx.fillStyle='#8bd897';ctx.fillRect(mx+mw*.785,my,mw*.07,22);
+    const p=(Math.sin(phase)+1)/2;ctx.fillStyle='#fff';ctx.fillRect(mx+p*mw-2,my-5,4,32);
+    ctx.fillStyle='#93a69e';ctx.font='10px IBM Plex Mono';ctx.fillText('STRIKE POWER',mx,my-10);
+    ctx.fillStyle='#e1e8e3';ctx.font='600 30px IBM Plex Mono';ctx.fillText(depth.toFixed(2)+' m',mx,my+80);
+    ctx.font='12px IBM Plex Mono';ctx.fillStyle='#93a69e';ctx.fillText(`strikes ${strikes} · layer: ${layerAt(c,depth).desc.split(':')[0]}`,mx,my+102);
+    ctx.fillText(`time so far ${dur((10+strikes*.5)*fm)}`,mx,my+120);
+  });
+}
+
+/* ---------- Core viewer ---------- */
+function coreModal(c,i){
+  const b=c.bhs[i],ls=layersTo(c,b.depth);
+  const rows=ls.map(l=>`<tr><td class="num">${l.top.toFixed(2)}–${Math.min(l.bot,b.depth).toFixed(2)} m</td><td>${esc(l.desc.split(':')[0])}</td><td><span style="display:inline-block;width:14px;height:14px;vertical-align:middle;background:${munsellRGB(l.mun.h,l.mun.v,l.mun.c)}"></span></td></tr>`).join('');
+  showModal(`<div class="sub">BH${i+1} · core recovered to ${b.depth.toFixed(2)} m</div><h2>Split the tube</h2>
+   <canvas id="corecv"></canvas>
+   <div class="scroll"><table class="tbl"><thead><tr><th>Depth</th><th>Unit (by eye)</th><th>Colour</th></tr></thead><tbody>${rows}</tbody></table></div>
+   <p class="dim">${ls.length} sample bag${ls.length>1?'s':''} (one per layer) labelled ${c.town.slice(0,3).toUpperCase()}-BH${i+1}. Field descriptions come from your ribbon and colour logging.</p>
+   <div class="row"><button class="btn go" data-act="closeModal">Bag it</button></div>`);
+  const cv=$('#corecv'),ctx=setupCanvas(cv,600,90);ctx.fillStyle='#0b1211';ctx.fillRect(0,0,600,90);
+  const sc=560/2.5;
+  ls.forEach(l=>{const x1=20+l.top*sc,x2=20+Math.min(l.bot,b.depth)*sc;ctx.fillStyle=munsellRGB(l.mun.h,l.mun.v,l.mun.c);ctx.fillRect(x1,25,x2-x1,34);
+    for(let k=0;k<(x2-x1)/3;k++){ctx.fillStyle=`rgba(${Math.random()<.5?'0,0,0':'255,255,255'},.08)`;ctx.fillRect(x1+Math.random()*(x2-x1),25+Math.random()*34,3,2)}
+    if(l.fill){for(let k=0;k<12;k++){ctx.fillStyle=pick(['#9a3d2a','#cfd8d3','#3b3b3b']);ctx.fillRect(x1+Math.random()*(x2-x1),28+Math.random()*28,5,4)}}});
+  ctx.strokeStyle='#b8c2bf';ctx.strokeRect(20,24,b.depth*sc,36);
+  ctx.fillStyle='#93a69e';ctx.font='10px IBM Plex Mono';for(let d=0;d<=2.5;d+=.5){ctx.fillRect(20+d*sc,62,1,6);ctx.fillText(d.toFixed(1)+'m',20+d*sc-8,80)}
+}
+
+/* ---------- Minigame: DCP ---------- */
+function mgDCP(c,i){
+  const b=c.bhs[i],R=gear('rods'),fm=fieldMult();
+  let d=0,blows=0,inInt=0,rec=[],obsBlows=0,bounces=0,broke=false,ended=false,lastPen=0,drop=0,stuck=false;
+  const fl=b.floater!=null&&b.floater<c.prof.rock?b.floater*1000:null,rock=c.prof.rock*1000;
+  showModal(`<div class="sub">BH${i+1} · AS 1289.6.3.2 · 9 kg hammer, 510 mm drop</div><h2>Dynamic Cone Penetrometer</h2>
+   <div class="tip">Record blows per 100 mm to 2.0 m or refusal. Refusal is commonly called around <b>20+ blows/100 mm</b>, or when the hammer bounces (under ~5 mm per blow). Every bouncing blow risks getting the rods stuck. Is it bedrock, or a floater you could punch through?</div>
+   <canvas id="dcpcv"></canvas><div class="msg" id="dmsg">Cone seated. Rods plumb.</div>
+   <div class="row"><button class="btn go" id="dDrop">DROP HAMMER</button><button class="btn" id="d5">Drop ×5</button><button class="btn warn" id="dRef">Call refusal</button><span class="mono dim" id="dStat"></span></div>`,()=>{stopLoop();document.removeEventListener('keydown',key)});
+  const cv=$('#dcpcv'),ctx=setupCanvas(cv,560,320),msg=$('#dmsg');
+  const end=(why)=>{if(ended)return;ended=true;if(inInt)rec.push(inInt);const m=(10+blows*.3)*fm+(stuck?R.free:0);spend(m);
+    b.dcp=rec;b.dcpRef=why==='target'?null:r1(d/10)/100;b.st='done';
+    eva(`BH${i+1} DCP: ${why==='target'?'reached 2.0 m':'refusal at '+(d/1000).toFixed(2)+' m'} (${blows} blows, ${dur(m)}).`);
+    $('#dDrop').disabled=$('#d5').disabled=true;$('#dRef').textContent='Close';$('#dRef').onclick=()=>closeModal()};
+  const one=()=>{
+    if(ended)return false;blows++;drop=1;
+    const lay=layerAt(c,d/1000);let pen,note='';
+    const onF=fl!=null&&!broke&&d>=fl-1,onR=d>=rock-1;
+    if(onF||onR){pen=rnd(.5,3);bounces++;note=`Bounce… ${pen.toFixed(1)} mm.${bounces>=4?' Still bouncing.':''}`;
+      if(onF){obsBlows++;if(obsBlows>=b.flBlows){broke=true;pen=rnd(25,45);note='CLUNK. It punched through! That was a floater (a boulder), not bedrock.'}}}
+    else{pen=100/(lay.dcp*rnd(.8,1.25));note=`${pen.toFixed(0)} mm`;
+      if(lay.dcp<1.3&&Math.random()<.4){pen+=60;note='The rods sank under the weight of the hammer alone. Very soft ground.'}
+      const stopAt=(!broke&&fl!=null)?Math.min(fl,rock):rock;if(d<stopAt)pen=Math.min(pen,Math.max(.5,stopAt-d))}
+    if(pen<5&&Math.random()<R.stuck*(1+obsBlows*.15)){stuck=true;
+      const bent=Math.random()<.3;if(bent){S.money-=180;c.penalties.push('Bent a DCP rod ($180)')}
+      msg.className='msg bad';msg.textContent=`Rods stuck! ${dur(R.free)} with the ${S.gear.rods?'rod puller':'jack and a lot of swearing'}${bent?'. One rod is bent: $180':''}. Test ends here.`;
+      d+=pen;inInt++;end('refusal');return false}
+    msg.className=pen<5?'msg bad':'msg';msg.textContent=note;
+    lastPen=pen;
+    const nd=d+pen;inInt++;
+    while(nd>=(rec.length+1)*100&&rec.length<20){rec.push(inInt);inInt=0}
+    d=Math.min(nd,2000);
+    if(d>=2000){d=2000;msg.className='msg';msg.textContent='2.0 m reached. Test complete.';end('target');return false}
+    return true};
+  const key=e=>{if(e.code==='Space'){e.preventDefault();one()}};document.addEventListener('keydown',key);
+  $('#dDrop').onclick=one;$('#d5').onclick=()=>{for(let k=0;k<5;k++)if(!one())break};
+  $('#dRef').onclick=()=>{if(!ended){if(d<100){toast('You haven’t gone 100 mm yet.');return}end('refusal')}};
+  loop(dt=>{drop=Math.max(0,drop-dt*4);
+    ctx.fillStyle='#0b1211';ctx.fillRect(0,0,560,320);
+    const gx=90,gy=60,sc=120;
+    c.prof.layers.forEach(l=>{const y1=gy+l.top*sc,y2=gy+Math.min(l.bot,2.1)*sc;ctx.fillStyle=munsellRGB(l.mun.h,l.mun.v,l.mun.c);ctx.globalAlpha=.75;ctx.fillRect(gx-50,y1,100,y2-y1);ctx.globalAlpha=1});
+    ctx.fillStyle='#93a69e';ctx.font='10px IBM Plex Mono';for(let k=0;k<=2;k+=.5){ctx.fillText(k.toFixed(1),gx-80,gy+k*sc+3);ctx.fillRect(gx-56,gy+k*sc,6,1)}
+    const tip=gy+d/1000*sc;ctx.fillStyle='#cfd8d3';ctx.fillRect(gx-2,tip-sc*2.2,4,sc*2.2);ctx.beginPath();ctx.moveTo(gx-5,tip-4);ctx.lineTo(gx+5,tip-4);ctx.lineTo(gx,tip+4);ctx.fill();
+    const hy=Math.max(0,tip-sc*2.2)-30-drop*24;ctx.fillStyle='#ff9b30';ctx.fillRect(gx-10,Math.max(4,hy),20,22);
+    // table
+    ctx.fillStyle='#e1e8e3';ctx.font='600 13px IBM Plex Mono';ctx.fillText('Depth (mm)   Blows/100 mm',220,26);
+    ctx.font='12px IBM Plex Mono';
+    for(let k=0;k<20;k++){const col=k<10?0:1,row=k%10,x=220+col*170,y=48+row*22;
+      const v=k<rec.length?rec[k]:k===rec.length?inInt:null;
+      ctx.fillStyle='#93a69e';ctx.fillText(`${String(k*100).padStart(4)}–${String((k+1)*100).padStart(4)}`,x,y);
+      if(v!=null){ctx.fillStyle=v>=20?'#ff6455':v>=10?'#ff9b30':'#8bd897';ctx.fillText(String(v).padStart(3)+(k===rec.length&&!ended?' …':''),x+100,y);ctx.fillRect(x+128,y-8,Math.min(v,30)*1.2,6)}}
+    $('#dStat').textContent=`${(d/1000).toFixed(2)} m · ${blows} blows · last ${lastPen.toFixed(1)} mm`;
+  });
+}
+
+/* ---------- Field logging: ribbon + colour ---------- */
+function logFlow(c){
+  const deep=deepest(c),ls=layersTo(c,deep.depth);
+  if(!c.logs)c.logs={layers:[],done:false,maxD:deep.depth};
+  const idx=c.logs.layers.length;
+  if(idx>=ls.length){c.logs.done=true;c.logs.maxD=deep.depth;say(`${c.town}: ${ls.length} layers logged.`);closeModal();return}
+  const l=ls[idx],fs=best('f');
+  const m=12*fieldMult();
+  if(!need(m,'field','logging a layer'))return;
+  showModal(`<div class="sub">Layer ${idx+1} of ${ls.length} · ${l.top.toFixed(2)}–${Math.min(l.bot,deep.depth).toFixed(2)} m</div><h2>Log this layer</h2>
+    <p>${esc(l.fill?'Looks like fill. Bits of brick and slag mixed through it.':l.organic?'Dark, wet, and smells like a swamp.':'A fresh face of soil from the split tube.')}</p>
+    <div class="row"><button class="btn go" id="lgMe">Do it myself (ribbon test, then colour chart)</button>
+    ${fs&&fs.f>0?`<button class="btn" id="lgDel">Hand it to ${esc(fs.n)}</button>`:''}</div>`);
+  $('#lgMe').onclick=()=>mgRibbon(c,l,idx,ls.length);
+  if($('#lgDel'))$('#lgDel').onclick=()=>{spend(m);const p=.5+.15*fs.f;
+    const ti=texIdx(l.tex),tex=Math.random()<p?l.tex:TEX[clamp(ti+pick([-1,1]),0,TEX.length-1)].k;
+    const mun=Math.random()<p?{...l.mun}:{...l.mun,c:clamp(l.mun.c+pick([-1,1]),1,8)};
+    c.logs.layers.push({tex,mun,rib:TEX[texIdx(tex)].r,by:fs.n});toast(`${fs.n} logs it as ${TEX[texIdx(tex)].n}, ${munStr(mun)}.`);logFlow(c)};
+}
+function mgRibbon(c,l,idx,n){
+  const T=TEX[texIdx(l.tex)],sandy=SANDY.includes(l.tex)||l.tex==='S';
+  let w=rint(1,2),knead=0,len=0,pressing=false,broke=false,brk=0,chosen=null,t0=performance.now();
+  const feelTxt=()=>w<3?'Dry and crumbly: won’t hold together.':w<5?'Holds together but cracks when you bend it.':w<=7?'Coherent bolus that just fails to stick to your fingers. ✓ Ideal.':w<=9?'Shiny and sticky. Getting too wet.':'Sloppy mess. Add some dry soil.';
+  showModal(`<div class="sub">Field texture · layer ${idx+1}/${n}</div><h2>Ribbon test</h2>
+   <div class="tip"><b>1.</b> Take a golf-ball-sized sample and work in water a few drops at a time until the bolus <i>just fails to stick to your fingers</i>. <b>2.</b> Knead it for 1–2 minutes to break down aggregates. <b>3.</b> Press it out between thumb and forefinger into a ribbon. Measure where it breaks, and notice the feel.</div>
+   <canvas id="rib"></canvas>
+   <div class="msg" id="rmsg">${feelTxt()}</div>
+   <div class="row" id="rA"><button class="btn" id="rW">Add water (squeeze bottle)</button><button class="btn" id="rD">Add dry soil</button><button class="btn" id="rK">Knead (20 s)</button><span class="mono dim" id="rk">kneaded 0 s</span></div>
+   <div class="row"><button class="btn go" id="rP">Hold to press ribbon</button><span class="mono" id="rL"></span></div>
+   <div id="rChoose" hidden><p><b>Which field texture grade?</b> <span class="dim" id="rFeel"></span></p><div class="choices">${TEX.map(t=>`<button class="btn" data-tex="${t.k}"><b>${t.k}</b> ${t.n}<br><span class="dim" style="font-size:12px">ribbon ${t.rr}</span></button>`).join('')}</div>
+   <div class="row" style="margin-top:8px"><button class="btn go" id="rOk" disabled>Record texture → colour chart</button></div></div>`,()=>{stopLoop()});
+  const cv=$('#rib'),ctx=setupCanvas(cv,560,150),msg=$('#rmsg');
+  const upd=()=>{msg.textContent=sandy&&w>=3?'The sand grains won’t hold a coherent bolus. Barely any cohesion.':feelTxt();$('#rk').textContent=`kneaded ${knead*20} s`};
+  $('#rW').onclick=()=>{w++;upd()};$('#rD').onclick=()=>{w=Math.max(0,w-2);upd()};$('#rK').onclick=()=>{knead++;upd()};
+  const pb=$('#rP');
+  const startP=e=>{e.preventDefault();if(broke)return;pressing=true;
+    const mf=w>=5&&w<=7?1:w<5?.55:.82,kf=knead>=4?1:.7+knead*.07;
+    brk=Math.max(sandy?1:3,T.r*(l.organic?.6:1)*mf*kf*rnd(.92,1.08))};
+  const endP=()=>{if(!pressing)return;pressing=false;if(!broke&&len>0){broke=true;finishR()}};
+  pb.onpointerdown=startP;pb.onpointerup=endP;pb.onpointerleave=endP;
+  pb.onkeydown=e=>{if((e.key===' '||e.key==='Enter')&&!pressing){startP(e)}};pb.onkeyup=e=>{if(e.key===' '||e.key==='Enter')endP()};
+  const finishR=()=>{const L=r1(len);$('#rL').textContent=`Ribbon broke at ${L} mm`;
+    if(!(w>=5&&w<=7))toast(w<5?'Too dry: the ribbon broke early. Your reading is short.':'Too wet: the ribbon smeared. Hard to read.','hv');
+    if(knead<4)toast('Not kneaded enough: aggregates make the ribbon break early.','hv');
+    $('#rFeel').textContent=`Feel: ${l.feel||T.feel}`;$('#rChoose').hidden=false;$('#rA').hidden=true;pb.disabled=true;
+    c._rib=L};
+  sheet().querySelectorAll('[data-tex]').forEach(bt=>bt.onclick=()=>{chosen=bt.dataset.tex;sheet().querySelectorAll('[data-tex]').forEach(x=>x.setAttribute('aria-pressed',x===bt));$('#rOk').disabled=false});
+  $('#rOk').onclick=()=>{const ok=chosen===l.tex,near=Math.abs(texIdx(chosen)-texIdx(l.tex))===1;
+    toast(ok?`Spot on: ${T.n}.`:near?`Close. It was ${T.n} (${T.k}).`:`Hmm. It was ${T.n} (${T.k}). Ribbon ${T.rr}.`,ok?'':'hv');
+    if(ok)S.stats.perfect++;
+    mgColour(c,l,idx,n,chosen)};
+  loop(dt=>{if(pressing&&!broke){len+=dt*14;if(len>=brk){len=brk;broke=true;pressing=false;finishR()}}
+    ctx.fillStyle='#1d2826';ctx.fillRect(0,0,560,150);
+    const col=munsellRGB(l.mun.h,l.mun.v,Math.max(1,l.mun.c));
+    // thumb
+    ctx.fillStyle='#c99a7b';ctx.beginPath();ctx.ellipse(70,70,48,34,0,0,7);ctx.fill();ctx.fillStyle='#e0b597';ctx.beginPath();ctx.ellipse(60,62,30,20,0,0,7);ctx.fill();
+    // bolus
+    ctx.fillStyle=col;ctx.beginPath();ctx.arc(100,75,18-len/12,0,7);ctx.fill();
+    // ribbon
+    const px=4.5;ctx.fillStyle=col;ctx.beginPath();ctx.moveTo(110,66);ctx.lineTo(110+len*px,70+len*.25);ctx.lineTo(110+len*px,80+len*.25);ctx.lineTo(110,84);ctx.fill();
+    if(broke&&len>0){ctx.fillStyle='#1d2826';ctx.fillRect(110+len*px-3,60,6,40)}
+    // ruler
+    ctx.fillStyle='#efdb72';ctx.fillRect(110,118,440,14);ctx.fillStyle='#1b1205';ctx.font='9px IBM Plex Mono';
+    for(let mm=0;mm<=95;mm+=5){const x=110+mm*px;ctx.fillRect(x,118,1,mm%10?5:9);if(mm%10===0)ctx.fillText(mm,x+2,130)}
+    ctx.fillStyle='#93a69e';ctx.font='10px IBM Plex Mono';ctx.fillText('mm',520,112);
+  });
+}
+function mgColour(c,l,idx,n,tex){
+  let hue='10YR',sel=null;
+  const draw=()=>{
+    const vals=[8,7,6,5,4,3,2],chs=[1,2,3,4,6,8];
+    $('#mgrid').style.gridTemplateColumns=`40px repeat(${chs.length},38px)`;
+    $('#mgrid').innerHTML=`<div class="axis">V\\C</div>${chs.map(ch=>`<div class="axis">${ch}</div>`).join('')}`+vals.map(v=>`<div class="axis">${v}/</div>`+chs.map(ch=>`<button class="chipc" style="background:${munsellRGB(hue,v,ch)}" aria-label="${hue} ${v}/${ch}" aria-pressed="${sel&&sel.h===hue&&sel.v===v&&sel.c===ch}" data-v="${v}" data-c="${ch}"></button>`).join('')).join('');
+    $('#mgrid').querySelectorAll('.chipc').forEach(b=>b.onclick=()=>{sel={h:hue,v:+b.dataset.v,c:+b.dataset.c};draw()});
+    $('#mhue').querySelectorAll('button').forEach(b=>b.setAttribute('aria-selected',b.dataset.h===hue));
+    $('#mpick').style.background=sel?munsellRGB(sel.h,sel.v,sel.c):'transparent';
+    $('#mname').textContent=sel?`${munStr(sel)} · ${munsellName(sel.h,sel.v,sel.c)}`:'Pick a chip';
+    $('#mOk').disabled=!sel};
+  showModal(`<div class="sub">Munsell soil colour · layer ${idx+1}/${n}</div><h2>Match the colour</h2>
+   <div class="tip">Describe the <b>moist</b> colour. Hold the chart beside the sample in natural light, sunnies off, back to the sun. Pick the hue page first (red ←→ yellow), then value (lightness, rows) and chroma (strength, columns). Note mottles separately.</div>
+   <div class="compare"><div><div class="dim" style="font-size:12px">Sample (moist)</div><canvas id="msamp" style="width:150px"></canvas></div>
+     <div><div class="dim" style="font-size:12px">Your chip</div><div class="swatch" id="mpick"></div></div><div class="mono" id="mname"></div></div>
+   <div class="tabs" id="mhue" style="margin:0">${HUES.map(h=>`<button class="tab" data-h="${h}">${h}</button>`).join('')}</div>
+   <div class="scroll"><div class="munsell" id="mgrid"></div></div>
+   <div class="row"><button class="btn go" id="mOk" disabled>Record colour</button></div>`);
+  const sc=$('#msamp'),sx=setupCanvas(sc,150,100);sx.fillStyle=munsellRGB(l.mun.h,l.mun.v,l.mun.c);sx.fillRect(0,0,150,100);
+  for(let k=0;k<600;k++){sx.fillStyle=`rgba(${Math.random()<.5?'0,0,0':'255,255,255'},${rnd(.03,.09)})`;sx.fillRect(Math.random()*150,Math.random()*100,rnd(1,4),rnd(1,3))}
+  if(l.fill)for(let k=0;k<10;k++){sx.fillStyle=pick(['#9a3d2a','#cfd8d3','#333']);sx.fillRect(Math.random()*150,Math.random()*100,6,5)}
+  $('#mhue').querySelectorAll('button').forEach(b=>b.onclick=()=>{hue=b.dataset.h;draw()});
+  draw();
+  $('#mOk').onclick=()=>{const t=l.mun,exact=sel.h===t.h&&sel.v===t.v&&sel.c===t.c,close=Math.abs(HUES.indexOf(sel.h)-HUES.indexOf(t.h))<=1&&Math.abs(sel.v-t.v)<=1&&Math.abs(sel.c-t.c)<=2;
+    toast(exact?`Exact match: ${munStr(t)} ${munsellName(t.h,t.v,t.c)}.`:close?`Close enough for a field log. Reference: ${munStr(t)}.`:`Off the mark. Reference was ${munStr(t)} (${munsellName(t.h,t.v,t.c)}).`,exact?'':'hv');
+    spend(12*fieldMult());c.logs.layers.push({tex,mun:sel,rib:c._rib});logFlow(c)};
+}
+
+/* ============================================================
+   LAB
+   ============================================================ */
+function renderLab(){
+  const labC=S.contracts.filter(c=>['fieldDone','atLab','oven1','prep','oven2','measure','report'].includes(c.status));
+  const atHQ=S.loc==='HQ',lm=labMult(),per=gear('crusher').per;
+  const row=c=>{
+    const prepMin=c.samples*per*lm;
+    let act='',info='';
+    const pct=c.status.startsWith('oven')?clamp((S.t-c.ovenStart)/(c.ovenEnd-c.ovenStart)*100,0,100):0;
+    switch(c.status){
+      case 'fieldDone':info='Samples are still in the ute. Drive back to HQ.';break;
+      case 'atLab':info=`${c.samples} samples on the bench.`;act=`<button class="btn go" data-act="oven" data-arg="${c.id}" ${atHQ?'':'disabled'}>Load oven: initial dry (10 min)</button>`;break;
+      case 'oven1':info=`Oven 1 at 105 °C. Done D${Math.floor(c.ovenEnd/1440)+1} ${clock(c.ovenEnd)} (${ovenLeft(c)} left).`;break;
+      case 'prep':info=`Crush, sieve, plastic limit, liquid limit, linear shrinkage moulds. ${c.samples} samples × ${per} min${lm<1?` × crew ${lm.toFixed(2)}`:''} = <b>${dur(prepMin)}</b>.`;act=`<button class="btn go" data-act="prep" data-arg="${c.id}" ${atHQ?'':'disabled'}>Prep & test (${dur(prepMin)})</button>`;break;
+      case 'oven2':info=`Oven 2: final dry weights. Done D${Math.floor(c.ovenEnd/1440)+1} ${clock(c.ovenEnd)} (${ovenLeft(c)} left).`;break;
+      case 'measure':info='Dry LS bars and moisture tins are out of the oven.';act=`<button class="btn go" data-act="measure" data-arg="${c.id}" ${atHQ?'':'disabled'}>Measure & weigh (${dur(20*lm)})</button>`;break;
+      case 'report':info='All results in. Time to write it up.';act=`<button class="btn go" data-act="report" data-arg="${c.id}" ${atHQ?'':'disabled'}>Write report</button>`;break;
+    }
+    return `<div class="card"><div class="labrow"><div><div class="eyebrow">#${c.id} · ${esc(c.town)} · due D${c.deadline}</div>
+      <h3 style="font-size:17px">${ST[c.status][0]}</h3><p style="margin:4px 0" class="dim">${info}</p>
+      ${c.status.startsWith('oven')?`<div class="timer"><i style="width:${pct}%"></i></div>`:''}</div><div class="row">${act}</div></div></div>`};
+  const done=S.contracts.filter(c=>c.status==='done'||c.status==='failed').slice(-6).reverse();
+  $('#view').innerHTML=`<div style="display:flex;flex-direction:column;gap:12px">
+   <div class="row" style="justify-content:space-between"><h2 style="font-size:26px;color:var(--book)">Moonah lab</h2>${atHQ?'<span class="chip c-ok">At HQ</span>':`<span class="chip c-bad">You’re in ${esc(S.loc)}. Lab work needs you at HQ.</span>`}</div>
+   <div class="tip">Process: <b>oven 12 h</b> (initial dry) → <b>prep & testing ${per} min per sample</b> → <b>oven 12 h</b> (final dry weights) → measure → report. Ovens run while you do other jobs or sleep. Lab hours run to 22:00.</div>
+   ${labC.length?labC.map(row).join(''):'<p class="dim">No samples in the lab. Go and dig some holes.</p>'}
+   ${done.length?`<div class="card"><div class="eyebrow">Recent reports</div><div class="scroll"><table class="tbl"><thead><tr><th>#</th><th>Site</th><th>Your class</th><th>Actual</th><th>Paid</th></tr></thead><tbody>${done.map(c=>`<tr><td>${c.id}</td><td>${esc(c.town)}</td><td class="num">${c.result?c.result.cls:'—'}</td><td class="num">${c.result?c.result.truth:'—'}</td><td class="num">${c.result?money(c.result.pay):'<span class="c-bad">lost</span>'}</td></tr>`).join('')}</tbody></table></div></div>`:''}
+  </div>`;
+}
+Object.assign(ACT,{
+  oven(id){const c=C(id);if(c.status!=='atLab')return;if(!need(10,'lab','loading the oven'))return;spend(10);c.status='oven1';c.ovenStart=S.t;c.ovenEnd=S.t+720;say(`#${c.id}: samples in the oven at 105 °C. Back in 12 hours.`);render()},
+  prep(id){const c=C(id);if(c.status!=='prep')return;const m=c.samples*gear('crusher').per*labMult();if(!need(m,'lab','prep & testing'))return;c.lab={layers:[],idx:0,min:m};labFlow(c)},
+  measure(id){const c=C(id);if(c.status!=='measure')return;const m=20*labMult();if(!need(m,'lab','measuring'))return;c.meas=0;measureFlow(c)},
+  report(id){const c=C(id);if(c.status!=='report')return;if(!need(90,'lab','writing the report (1.5 h)'))return;reportModal(c)},
+});
+
+function labLayers(c){return c.prof.layers.slice(0,c.logs.layers.length)}
+function labFlow(c){
+  const ls=labLayers(c),i=c.lab.layers.length;
+  if(i>=ls.length){spend(c.lab.min);c.status='oven2';c.ovenStart=S.t;c.ovenEnd=S.t+720;
+    say(`#${c.id}: prep & testing done (${dur(c.lab.min)}). Moisture tins and LS moulds into the oven for 12 hours.`);closeModal();return}
+  const l=ls[i],tech=best('l');
+  showModal(`<div class="sub">#${c.id} ${esc(c.town)} · layer ${i+1} of ${ls.length}</div><h2>Atterberg limits: ${esc(l.desc.split(':')[0])}</h2>
+   <p>Crush and sieve to pass 425 µm, then the plastic limit thread and the cone liquid limit. A linear shrinkage mould gets filled from the LL paste.</p>
+   <div class="row"><button class="btn go" id="lbMe">Do it myself</button>${tech&&tech.l>0?`<button class="btn" id="lbDel">Hand it to ${esc(tech.n)}</button>`:''}</div>`);
+  $('#lbMe').onclick=()=>mgCrush(c,l,i,ls.length);
+  if($('#lbDel'))$('#lbDel').onclick=()=>{const s=tech.l;const np=l.PL==null;
+    c.lab.layers.push(np?{np:true}:{pl:r1(l.PL+gauss()*(2.2-.6*s)),ll:r1(l.LL+gauss()*(3-.8*s)),by:tech.n});
+    toast(`${tech.n} runs the limits. ${np?'Non-plastic.':''}`);labFlow(c)};
+}
+function mgCrush(c,l,i,n){
+  if(S.gear.crusher){toast('The grinder whirrs. Sample passes 425 µm.');return mgPL(c,l,i,n)}
+  let p=0;
+  showModal(`<div class="sub">Sample prep · layer ${i+1}/${n}</div><h2>Mortar & pestle</h2>
+   <div class="tip">Break up the oven-dried aggregates without crushing individual grains, then sieve through 425 µm. Only the fines go into the Atterberg tests.</div>
+   <div class="timer" style="height:18px"><i id="cbar" style="width:0%"></i></div><div class="msg" id="cmsg">Clods the size of golf balls.</div>
+   <div class="row"><button class="btn go" id="cG">GRIND</button><button class="btn" id="cS" disabled>Sieve → 425 µm</button></div>`);
+  $('#cG').onclick=()=>{p=Math.min(100,p+rnd(7,13));$('#cbar').style.width=p+'%';$('#cmsg').textContent=p<40?'Clods breaking up…':p<80?'Getting there. Your wrist hurts.':'Fine powder. Good.';if(p>=80)$('#cS').disabled=false};
+  $('#cS').onclick=()=>mgPL(c,l,i,n);
+}
+function mgPL(c,l,i,n){
+  const NP=l.PL==null,PL=l.PL??0;
+  let m=PL+rnd(2.5,5),d=12,strokes=0,crumb=false,crumbD=0,intactWarn=false,acc=0,lastY=null,dir=0,lastT=0,res=null,cracks=0;
+  showModal(`<div class="sub">AS 1289.3.2.1 · layer ${i+1}/${n}</div><h2>Plastic limit: roll the thread</h2>
+   <div class="tip">Roll the soil on the glass plate with your palm (drag up and down across the thread, or use the button) at an even pressure. The <b>plastic limit</b> is the moisture content at which the thread <b>crumbles at 3 mm</b> diameter. Still intact at 3 mm? It’s too wet: re-form it into a ball and roll again (handling dries it). Crumbles fatter than 3 mm? Too dry: add a drop of water.</div>
+   <canvas id="plcv" style="touch-action:none;cursor:grab"></canvas>
+   <div class="msg" id="plmsg">Drag up and down over the thread to roll it.</div>
+   <div class="row"><button class="btn" id="plR">Roll ↕</button><button class="btn" id="plF">Re-form into a ball</button><button class="btn" id="plW">Add a drop of water</button>
+   <button class="btn go" id="plB">Crumbled at 3 mm: into the tin</button><button class="btn" id="plN">Won’t form a thread: record non-plastic</button></div>`,()=>stopLoop());
+  const cv=$('#plcv'),ctx=setupCanvas(cv,560,220),msg=$('#plmsg');
+  const roll=()=>{if(crumb)return;strokes++;
+    if(NP){crumb=true;crumbD=d;msg.className='msg bad';msg.textContent='It falls apart into crumbs. You can’t form a thread at all.';return}
+    d=Math.max(2.4,d-.45*rnd(.85,1.15));m-=.06;
+    const cd=3+Math.max(0,PL-m)*2.5;
+    if(m<=PL+.3&&d<=cd){crumb=true;crumbD=d;msg.className=d>3.6?'msg bad':'msg';msg.textContent=d>3.6?`Crumbled at ${d.toFixed(1)} mm. Fatter than 3 mm: too dry. Add water and re-form.`:`Crumbling at ${d.toFixed(1)} mm. That’s the plastic limit.`;return}
+    if(d<=3&&m>PL+.3){msg.className='msg bad';msg.textContent='Still intact and plastic at 3 mm. Too wet: re-form into a ball and roll again.';intactWarn=true}
+    else{msg.className='msg';msg.textContent=`Diameter ≈ ${d.toFixed(1)} mm${m<PL+.9?' · hairline cracks appearing…':''}`}};
+  $('#plR').onclick=roll;
+  $('#plF').onclick=()=>{d=12;m-=.9;crumb=false;msg.className='msg';msg.textContent='Kneaded back into a ball (and a little drier).'};
+  $('#plW').onclick=()=>{m+=1.5;d=12;crumb=false;msg.className='msg';msg.textContent='A drop of water, re-mixed. Try again.'};
+  $('#plB').onclick=()=>{if(!crumb){toast('Only tin it once the thread crumbles near 3 mm.','hv');return}
+    if(NP){toast('That isn’t a thread; it’s just crumbs. Record it as non-plastic.','hv');return}
+    res={pl:r1(m+gauss()*.2),cd:crumbD};
+    const err=res.pl-PL;toast(Math.abs(err)<.8?'Textbook thread. 👌':err<0?`Crumbled at ${crumbD.toFixed(1)} mm. A bit dry, so your PL will read low.`:'A bit wet. Your PL will read high.',Math.abs(err)<.8?'':'hv');
+    mgLL(c,l,i,n,res)};
+  $('#plN').onclick=()=>{if(!NP)toast('Hmm, this soil can hold a thread. Recorded as NP anyway…','bad');
+    c.lab.layers.push({np:true});labFlow(c)};
+  cv.onpointerdown=e=>{cv.setPointerCapture(e.pointerId);lastY=cpos(cv,e,560)[1];lastT=performance.now();acc=0;dir=0};
+  cv.onpointermove=e=>{if(lastY==null)return;const y=cpos(cv,e,560)[1],dy=y-lastY,now=performance.now(),sp=Math.abs(dy)/Math.max(1,now-lastT);lastY=y;lastT=now;
+    if(sp>3.2){msg.className='msg bad';msg.textContent='Ease up! Even pressure, steady strokes.';acc=0;return}
+    const nd=Math.sign(dy);if(nd&&nd!==dir){if(Math.abs(acc)>34)roll();acc=0;dir=nd}acc+=dy};
+  cv.onpointerup=cv.onpointercancel=()=>{if(Math.abs(acc)>34)roll();lastY=null};
+  loop(()=>{ctx.fillStyle='#2b3b3d';ctx.fillRect(0,0,560,220);
+    ctx.fillStyle='rgba(255,255,255,.06)';ctx.fillRect(20,20,520,180);ctx.strokeStyle='rgba(255,255,255,.18)';ctx.strokeRect(20,20,520,180);
+    const col=munsellRGB(l.mun.h,Math.min(8,l.mun.v+1),Math.max(1,l.mun.c));
+    const th=d*3.6,len=Math.min(470,70*Math.pow(12/d,1.25)),x0=280-len/2,y0=110;
+    if(!crumb){ctx.fillStyle=col;ctx.beginPath();ctx.roundRect(x0,y0-th/2,len,th,th/2);ctx.fill();
+      if(!NP&&m<PL+.9){ctx.strokeStyle='rgba(0,0,0,.45)';ctx.lineWidth=1;const k=Math.floor((PL+.9-m)*12);for(let j=0;j<k;j++){const x=x0+((j*53)%len);ctx.beginPath();ctx.moveTo(x,y0-th/2);ctx.lineTo(x+2,y0+th/4);ctx.stroke()}}}
+    else{for(let j=0;j<18;j++){const seg=len/18;ctx.fillStyle=col;ctx.beginPath();ctx.roundRect(x0+j*seg+((j*7)%5),y0-th/2+((j*13)%7)-3,seg-5,th,th/2);ctx.fill()}}
+    // 3 mm gauge rod
+    ctx.fillStyle='#b8c2bf';ctx.fillRect(40,180,140,3*3.6);ctx.fillStyle='#93a69e';ctx.font='10px IBM Plex Mono';ctx.fillText('3 mm gauge rod',40,175);
+    ctx.fillStyle='#e1e8e3';ctx.font='600 14px IBM Plex Mono';ctx.fillText(`⌀ ${d.toFixed(1)} mm`,440,40);
+  });
+}
+function mgLL(c,l,i,n,plRes){
+  const LL=l.LL,slope=12/(.2*LL+4);
+  let w=r1(LL-rnd(8,14)),pts=[],anim=0,pen=0;
+  showModal(`<div class="sub">AS 1289.3.9.1 · cone penetrometer · layer ${i+1}/${n}</div><h2>Liquid limit</h2>
+   <div class="tip">The <b>liquid limit</b> is the moisture content at which an 80 g, 30° cone sinks <b>20 mm</b> in 5 seconds. Take at least three readings between 15 and 25 mm, with at least one each side of 20, then fit the line. Start dry and work wetter.</div>
+   <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px" class="llg"><canvas id="llcv"></canvas><canvas id="llch"></canvas></div>
+   <div class="msg" id="llmsg">Paste mixed. Cup levelled.</div>
+   <div class="row"><button class="btn" id="w2">Add water (+2%)</button><button class="btn" id="w05">Add water (+0.5%)</button><button class="btn" id="wd">Air dry a bit (−1%)</button><button class="btn go" id="drop">Release cone (5 s)</button><button class="btn ok" id="fit">Fit line & record LL</button></div>`,()=>stopLoop());
+  const cv=$('#llcv'),ctx=setupCanvas(cv,280,220),ch=$('#llch'),cx=setupCanvas(ch,280,220),msg=$('#llmsg');
+  const mt=()=>`Moisture ≈ ${w.toFixed(1)}%`;
+  $('#w2').onclick=()=>{w=r1(w+2);msg.textContent=mt()};$('#w05').onclick=()=>{w=r1(w+.5);msg.textContent=mt()};$('#wd').onclick=()=>{w=r1(w-1);msg.textContent=mt()};
+  $('#drop').onclick=()=>{if(anim>0)return;pen=clamp(20+(w-LL)*slope+gauss()*.3,1.5,38);anim=.01;pts.push({w,p:r1(pen)});setTimeout(()=>{msg.textContent=`${mt()} → penetration ${r1(pen)} mm`;drawChart()},700)};
+  $('#fit').onclick=()=>{const g=pts.filter(p=>p.p>=15&&p.p<=25);
+    if(g.length<2){toast('Need at least two readings between 15 and 25 mm.','bad');return}
+    const ok=g.length>=3&&g.some(p=>p.p<20)&&g.some(p=>p.p>20);
+    const mx=g.reduce((a,p)=>a+p.p,0)/g.length,my=g.reduce((a,p)=>a+p.w,0)/g.length;
+    const sl=g.reduce((a,p)=>a+(p.p-mx)*(p.w-my),0)/Math.max(1e-6,g.reduce((a,p)=>a+(p.p-mx)**2,0));
+    const ll=r1(my+sl*(20-mx));
+    if(!ok)toast('Fewer than 3 points, or none on one side of 20 mm. Your LL is extrapolated and less reliable.','hv');
+    c.lab.layers.push({pl:plRes.pl,ll,pts:g.length,cd:plRes.cd});toast(`LL = ${ll}% · PL = ${plRes.pl}% · PI = ${r1(ll-plRes.pl)}`);labFlow(c)};
+  const drawChart=()=>{cx.fillStyle='#0b1211';cx.fillRect(0,0,280,220);
+    const ws=pts.map(p=>p.w).concat([LL-10,LL+10]),w0=Math.min(...ws)-2,w1=Math.max(...ws)+2,X=v=>30+(v-w0)/(w1-w0)*235,Y=p=>200-(p/40)*185;
+    cx.fillStyle='rgba(139,216,151,.12)';cx.fillRect(30,Y(25),235,Y(15)-Y(25));cx.strokeStyle='#efdb72';cx.setLineDash([4,3]);cx.beginPath();cx.moveTo(30,Y(20));cx.lineTo(265,Y(20));cx.stroke();cx.setLineDash([]);
+    cx.fillStyle='#93a69e';cx.font='10px IBM Plex Mono';cx.fillText('20 mm',232,Y(20)-4);cx.fillText('pen. (mm)',2,12);cx.fillText('moisture %',190,216);
+    [0,10,20,30,40].forEach(p=>cx.fillText(p,6,Y(p)+3));
+    pts.forEach(p=>{cx.fillStyle=p.p>=15&&p.p<=25?'#8bd897':'#ff6455';cx.beginPath();cx.arc(X(p.w),Y(p.p),4,0,7);cx.fill()})};
+  drawChart();
+  loop(dt=>{if(anim>0)anim=Math.min(1,anim+dt*1.6);
+    ctx.fillStyle='#1d2826';ctx.fillRect(0,0,280,220);
+    const cupY=140;ctx.fillStyle='#8a9592';ctx.fillRect(90,cupY,100,50);ctx.fillStyle=munsellRGB(l.mun.h,Math.min(8,l.mun.v+1),l.mun.c);ctx.fillRect(94,cupY,92,44);
+    const p=anim>0?pen*Math.min(1,anim*1.4):0;const tipY=cupY+p*1.6;
+    ctx.fillStyle='#cfd8d3';ctx.beginPath();ctx.moveTo(140,tipY);ctx.lineTo(124,tipY-40);ctx.lineTo(156,tipY-40);ctx.fill();ctx.fillRect(137,20,6,tipY-60);
+    ctx.fillStyle='#ff9b30';ctx.fillRect(110,14,60,18);ctx.fillStyle='#1b1205';ctx.font='bold 10px IBM Plex Mono';ctx.fillText('DIAL '+p.toFixed(1),114,27);
+    if(anim>=1)anim=0;
+  });
+}
+
+/* ---------- After oven 2: LS calipers + moisture tin ---------- */
+function measureFlow(c){
+  const ls=labLayers(c),i=c.meas;
+  if(i>=ls.length){tinQuiz(c);return}
+  const l=ls[i],L0=125,Ld=L0*(1-l.LS/100)*rnd(.998,1.002);
+  let read=L0-rnd(4,10);
+  showModal(`<div class="sub">AS 1289.3.4.1 · layer ${i+1}/${ls.length}</div><h2>Linear shrinkage bar</h2>
+   <div class="tip">The paste was trowelled into a 125 mm mould, air dried, then oven dried. Close the vernier caliper jaw onto the end of the dry bar. <b>LS = (1 − L<sub>dry</sub> / 125) × 100</b>. If it cracked, fit the pieces together; if it curled, measure along the centre line.</div>
+   <canvas id="lscv"></canvas>
+   <input type="range" id="lsr" min="90" max="125" step="0.1" value="${read.toFixed(1)}" aria-label="Caliper jaw position">
+   <div class="row"><button class="btn sm" id="lm">−0.1</button><button class="btn sm" id="lp">+0.1</button><span class="mono" id="lsv"></span><button class="btn go" id="lsOk">Record length</button></div>`,()=>stopLoop());
+  const cv=$('#lscv'),ctx=setupCanvas(cv,560,200);
+  const set=v=>{read=clamp(r1(v),90,125);$('#lsr').value=read;$('#lsv').textContent=`L_dry = ${read.toFixed(1)} mm → LS = ${r1((1-read/125)*100)}%`};
+  $('#lsr').oninput=e=>set(+e.target.value);$('#lm').onclick=()=>set(read-.1);$('#lp').onclick=()=>set(read+.1);set(read);
+  $('#lsOk').onclick=()=>{const v=r1((1-read/125)*100);c.lab.layers[i].ls=v;const err=Math.abs(read-Ld);
+    toast(err<.3?`Nice. LS ${v}%.`:`Recorded LS ${v}%. The jaw was ${err.toFixed(1)} mm off the bar end.`,err<.3?'':'hv');c.meas++;measureFlow(c)};
+  loop(()=>{ctx.fillStyle='#1d2826';ctx.fillRect(0,0,560,200);
+    const k=3.6,x0=60,y=60;
+    ctx.fillStyle='#6f7a77';ctx.fillRect(x0-4,y-8,L0*k+8,36);ctx.fillStyle='#4c5553';ctx.fillRect(x0,y-4,L0*k,28);
+    ctx.fillStyle=munsellRGB(l.mun.h,Math.min(8,l.mun.v+1),l.mun.c);ctx.fillRect(x0,y,Ld*k,20);
+    ctx.fillStyle='rgba(0,0,0,.35)';for(let j=1;j<4;j++)ctx.fillRect(x0+Ld*k*j/4,y,1,20);
+    // caliper
+    ctx.fillStyle='#cfd8d3';ctx.fillRect(x0-14,y-30,10,70);const jx=x0+read*k;ctx.fillRect(jx,y-30,10,70);ctx.fillRect(x0-14,y-34,L0*k+40,6);
+    ctx.fillStyle='#93a69e';ctx.font='10px IBM Plex Mono';for(let mm=0;mm<=125;mm+=5){ctx.fillRect(x0+mm*k,y+36,1,mm%10?4:8);if(mm%25===0)ctx.fillText(mm,x0+mm*k-6,y+56)}
+    // zoom
+    const zx=360,zy=125,zw=180,zh=64,zk=40;ctx.save();ctx.beginPath();ctx.rect(zx,zy,zw,zh);ctx.clip();ctx.fillStyle='#0b1211';ctx.fillRect(zx,zy,zw,zh);
+    const ctr=Ld;ctx.fillStyle=munsellRGB(l.mun.h,Math.min(8,l.mun.v+1),l.mun.c);ctx.fillRect(zx,zy+14,zw/2+(Ld-ctr)*zk,36);
+    ctx.fillStyle='#cfd8d3';ctx.fillRect(zx+zw/2+(read-ctr)*zk,zy,12,zh);ctx.restore();ctx.strokeStyle='#efdb72';ctx.strokeRect(zx,zy,zw,zh);
+    ctx.fillStyle='#efdb72';ctx.fillText('×10 loupe on the jaw',zx,zy-4);
+  });
+}
+function tinQuiz(c){
+  const i=c.lab.layers.findIndex(x=>!x.np&&x.pl!=null);
+  const fin=()=>{spend(20*labMult());c.status='report';say(`#${c.id}: all results in. Ready to write the report.`);closeModal()};
+  if(i<0)return fin();
+  const pl=c.lab.layers[i].pl,tin=r1(rnd(15,22)*100)/100,dry=rnd(4,7),wat=dry*pl/100;
+  const m1=tin.toFixed(2),m2=(tin+dry+wat).toFixed(2),m3=(tin+dry).toFixed(2);
+  const truth=(m2-m3)/(m3-m1)*100;
+  showModal(`<div class="sub">AS 1289.2.1.1 · moisture content</div><h2>Weigh the PL tin</h2>
+   <div class="tip">Moisture content <b>w = (m<sub>wet</sub> − m<sub>dry</sub>) / (m<sub>dry</sub> − m<sub>tin</sub>) × 100</b>. Water mass divided by <i>dry soil</i> mass, not wet mass. That’s the classic grad mistake.</div>
+   <table class="tbl" style="max-width:420px"><tr><td>Tin T${rint(10,99)} mass</td><td class="num">${m1} g</td></tr><tr><td>Tin + wet crumbs</td><td class="num">${m2} g</td></tr><tr><td>Tin + dry crumbs (after 12 h at 105 °C)</td><td class="num">${m3} g</td></tr></table>
+   <label class="row">Plastic limit for layer ${i+1} = <input type="number" id="tq" step="0.1" style="width:90px"> %</label>
+   <div class="row"><button class="btn go" id="tqOk">Check</button><button class="btn" id="tqS">Let the spreadsheet do it</button></div><div class="msg" id="tqm"></div>`);
+  $('#tqOk').onclick=()=>{const v=+$('#tq').value;if(Math.abs(v-truth)<=.3){S.rep=clamp(S.rep+1,0,100);toast(`Correct: ${truth.toFixed(1)}%. +1 rep. You can do maths in a lab coat.`);fin()}
+    else{$('#tqm').className='msg bad';$('#tqm').textContent=`Not quite. (${m2} − ${m3}) / (${m3} − ${m1}) × 100 = ${truth.toFixed(1)}%`;$('#tqOk').textContent='Continue';$('#tqOk').onclick=fin}};
+  $('#tqS').onclick=fin;
+}
+
+/* ---------- Report ---------- */
+function uscsFrom(ll,pi,np,tex,org){
+  if(org)return['OH/Pt'];
+  if(np)return['SP','SM'];
+  const a=.73*(ll-20),c=pi>=a&&pi>=4?'C':'M',h=ll>=50?'H':'L';
+  const fine=c+h;
+  if(SANDY.includes(tex))return['SC','SM',fine];
+  return[fine];
+}
+function ysCalc(layers,rock){
+  const lim=Math.min(HS,rock??HS);let ys=0;const rows=[];
+  layers.forEach(L=>{const top=L.top,bot=Math.min(L.bot,lim);if(bot<=top)return;const h=(bot-top)*1000,zm=(top+bot)/2,du=1.2*(1-zm/HS),iss=L.sandy?0:L.LS*.3,y=iss*du*h/100;ys+=y;rows.push({top,bot,iss,du,h,y})});
+  return{ys,rows,lim};
+}
+function classFromYs(ys,allSandy){return allSandy&&ys<=20?'A':ys<=20?'S':ys<=40?'M':ys<=60?'H1':ys<=75?'H2':'E'}
+function truthClass(c){
+  if(c.prof.flagP)return{cls:'P',ys:null,why:{landslip:'mapped landslide hazard on Tertiary clays',fill:'uncontrolled fill deeper than 0.4 m',soft:'soft and organic soils'}[c.prof.flagP]};
+  const ls=c.prof.layers.map(l=>({...l,sandy:SANDY.includes(l.tex)}));
+  const r=ysCalc(ls,c.prof.rock);return{cls:classFromYs(r.ys,ls.every(l=>l.sandy)),ys:r.ys};
+}
+function reportModal(c){
+  const ls=labLayers(c),maxD=c.logs.maxD;
+  const refs=c.bhs.map(b=>b.dcpRef).filter(v=>v!=null);
+  const rock=refs.length===c.bhs.length?refs.reduce((a,b)=>a+b,0)/refs.length:null;
+  const data=ls.map((l,i)=>{const lg=c.logs.layers[i],lb=c.lab.layers[i]||{};const np=!!lb.np;
+    const top=l.top,bot=i===ls.length-1?3:Math.min(l.bot,3);
+    return{top,bot:bot,shownBot:Math.min(l.bot,maxD),tex:lg.tex,mun:lg.mun,ll:np?null:lb.ll,pl:np?null:lb.pl,pi:np?null:r1(lb.ll-lb.pl),LS:lb.ls??0,np,sandy:SANDY.includes(lg.tex)||np,fill:l.fill,org:l.organic,desc:l.desc}});
+  const calc=ysCalc(data,rock);
+  showModal(`<div class="sub">#${c.id} · ${esc(c.town)} · for ${esc(c.client)}</div><h2>Site classification report</h2>
+   <div class="eyebrow">Fieldwork</div>
+   <div class="scroll"><table class="tbl"><thead><tr><th>BH</th><th>Tube depth</th><th>DCP</th><th>Min blows/100 mm (top 0.8 m)</th></tr></thead><tbody>
+    ${c.bhs.map((b,i)=>`<tr><td>BH${i+1}</td><td class="num">${b.depth.toFixed(2)} m${b.ref!=null?' (refusal)':''}</td><td class="num">${b.dcpRef!=null?'Refusal '+b.dcpRef.toFixed(2)+' m':'2.0 m, no refusal'}</td><td class="num">${b.dcp.length?Math.min(...b.dcp.slice(0,8)):'—'}</td></tr>`).join('')}</tbody></table></div>
+   ${c.penalties.length?`<p class="c-bad mono" style="font-size:12px">${c.penalties.map(esc).join('<br>')}</p>`:''}
+   <div class="eyebrow">Soil profile & lab results</div>
+   <div class="scroll"><table class="tbl"><thead><tr><th>Depth (m)</th><th>Field description</th><th>LL</th><th>PL</th><th>PI</th><th>LS %</th><th>USCS</th></tr></thead><tbody>
+    ${data.map((d,i)=>`<tr><td class="num">${d.top.toFixed(2)}–${d.shownBot.toFixed(2)}</td><td>${TEX[texIdx(d.tex)].n.toUpperCase()}${d.fill?' (FILL)':''}, ${munsellName(d.mun.h,d.mun.v,d.mun.c)} (${munStr(d.mun)})<br><span class="dim" style="font-size:12px">${esc(d.desc.split(':')[0])}</span></td>
+     <td class="num">${d.np?'NP':d.ll}</td><td class="num">${d.np?'NP':d.pl}</td><td class="num">${d.np?'NP':d.pi}</td><td class="num">${d.LS}</td>
+     <td><select id="us${i}" aria-label="USCS group for layer ${i+1}"><option value="">—</option>${USCS.map(u=>`<option>${u}</option>`).join('')}</select></td></tr>`).join('')}</tbody></table></div>
+   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px">
+    <div><div class="eyebrow">Casagrande plasticity chart</div><canvas id="pchart"></canvas></div>
+    <div><div class="eyebrow">Characteristic surface movement, y<sub>s</sub></div>
+     <p class="dim" style="font-size:12.5px;margin:4px 0">y<sub>s</sub> = Σ I<sub>ss</sub> · Δu · h / 100. Game simplifications: H<sub>s</sub> = ${HS} m, Δu = 1.2 pF at the surface falling to 0 at H<sub>s</sub>, I<sub>ss</sub> ≈ 0.3 × LS (in practice, run shrink-swell tests). Calculation stops at refusal: ${rock!=null?rock.toFixed(2)+' m (average DCP refusal)':'no refusal recorded'}.</p>
+     <div class="scroll"><table class="tbl"><thead><tr><th>z (m)</th><th>I<sub>ss</sub></th><th>Δu</th><th>h (mm)</th><th>y (mm)</th></tr></thead><tbody>
+      ${calc.rows.map(r=>`<tr><td class="num">${r.top.toFixed(2)}–${r.bot.toFixed(2)}</td><td class="num">${r.iss.toFixed(1)}</td><td class="num">${r.du.toFixed(2)}</td><td class="num">${Math.round(r.h)}</td><td class="num">${r.y.toFixed(1)}</td></tr>`).join('')}
+      <tr><td colspan="4"><b>y<sub>s</sub> (from your data)</b></td><td class="num"><b>${calc.ys.toFixed(0)} mm</b></td></tr></tbody></table></div></div>
+   </div>
+   <div class="tip">AS 2870 classes: <b>A</b> sand/rock, little movement · <b>S</b> y<sub>s</sub> 0–20 mm · <b>M</b> 20–40 · <b>H1</b> 40–60 · <b>H2</b> 60–75 · <b>E</b> &gt; 75 · <b>P</b> problem site (uncontrolled fill, soft soils, landslip, collapsing soils, mine subsidence…), regardless of y<sub>s</sub>.</div>
+   <div class="row"><label>Site class <select id="rcls"><option value="">—</option>${CLASSES.map(k=>`<option>${k}</option>`).join('')}</select></label>
+    <label>Footing recommendation <select id="rft"><option value="">—</option>${FOOTINGS.map(f=>`<option value="${f.k}">${f.n}</option>`).join('')}</select></label></div>
+   <div class="row"><button class="btn go" id="rSub">Sign & submit (1 h 30)</button><button class="btn" data-act="closeModal">Not yet</button></div>`);
+  // plasticity chart
+  const cv=$('#pchart'),x=setupCanvas(cv,300,220),X=v=>30+v/110*260,Y=v=>200-v/70*185;
+  x.fillStyle='#0b1211';x.fillRect(0,0,300,220);x.strokeStyle='#2d3d39';x.strokeRect(30,15,260,185);
+  x.strokeStyle='#efdb72';x.beginPath();x.moveTo(X(20),Y(0));x.lineTo(X(110),Y(.73*90));x.stroke();
+  x.strokeStyle='#93a69e';x.setLineDash([3,3]);x.beginPath();x.moveTo(X(50),Y(0));x.lineTo(X(50),Y(70));x.stroke();x.setLineDash([]);
+  x.fillStyle='#93a69e';x.font='10px IBM Plex Mono';x.fillText('A-line',X(88),Y(.73*68)-6);x.fillText('LL →',258,214);x.fillText('PI',4,20);
+  [['CL',35,22],['CH',75,52],['ML',36,4],['MH',80,18]].forEach(([t,a,b])=>x.fillText(t,X(a),Y(b)));
+  [0,20,40,60,80,100].forEach(v=>x.fillText(v,X(v)-6,212));[0,20,40,60].forEach(v=>x.fillText(v,8,Y(v)+3));
+  data.forEach((d,i)=>{if(d.np)return;x.fillStyle='#ff9b30';x.beginPath();x.arc(X(d.ll),Y(Math.max(0,d.pi)),5,0,7);x.fill();x.fillStyle='#1b1205';x.font='bold 9px IBM Plex Mono';x.fillText(i+1,X(d.ll)-3,Y(Math.max(0,d.pi))+3)});
+  $('#rSub').onclick=()=>{const cls=$('#rcls').value,ft=$('#rft').value;if(!cls||!ft){toast('Pick a site class and a footing recommendation.','bad');return}
+    const us=data.map((d,i)=>$('#us'+i).value);submitReport(c,cls,ft,us,data,calc,rock)};
+}
+function submitReport(c,cls,ft,us,data,calc,rock){
+  spend(90);
+  const T=truthClass(c),ord=['A','S','M','H1','H2','E'];
+  let pay=c.fee,rep=0;const notes=[];
+  if(cls===T.cls){rep+=6;notes.push(`Site class ${cls} is correct. The engineer signs off without a single email.`)}
+  else if(T.cls==='P'){pay*=.5;rep-=12;notes.push(`This was a <b>Class P</b> site (${T.why}). You called it ${cls}. A slab on that ground ends in a lawyer’s office.`)}
+  else if(cls==='P'){pay*=.75;rep-=3;notes.push(`You called Class P, but it was ${T.cls}. The client paid for piers they didn’t need. Grumbling ensues.`)}
+  else{const off=Math.abs(ord.indexOf(cls)-ord.indexOf(T.cls));
+    if(off===1){pay*=.85;rep+=1;notes.push(`Close: actual class ${T.cls} (y<sub>s</sub> ≈ ${T.ys.toFixed(0)} mm), you said ${cls}. The engineer queried it.`)}
+    else{pay*=.6;rep-=8;notes.push(`Way off: actual class ${T.cls} (y<sub>s</sub> ≈ ${T.ys.toFixed(0)} mm), you said ${cls}. ${ord.indexOf(cls)<ord.indexOf(T.cls)?'Three years later the slab cracks. The builder calls. Then their lawyer.':'The client’s footings are wildly over-designed and they know it.'}`)}}
+  const F=FOOTINGS.find(f=>f.k===ft);
+  if(F.for.includes(cls))notes.push('Footing recommendation matches your class.');else{rep-=2;notes.push(`Footing recommendation doesn’t suit Class ${cls}. Remember to match the footing to your class.`)}
+  let uOK=0;data.forEach((d,i)=>{if(uscsFrom(d.ll,d.pi,d.np,d.tex,d.org).includes(us[i]))uOK++});
+  rep+=uOK>=data.length?2:0;notes.push(`USCS groups: ${uOK}/${data.length} consistent with your own plasticity chart.`);
+  if(rock!=null&&rock<c.prof.rock-.3)notes.push(`Your DCP refusal (${rock.toFixed(2)} m) was shallower than actual ${c.prof.rockName} at ${Math.min(c.prof.rock,9).toFixed(2)} m. ${c.bhs.some(b=>b.floater!=null&&b.dcpRef!=null&&Math.abs(b.dcpRef-b.floater)<.1)?'At least one hole stopped on a floater.':''}`);
+  const labErr=c.lab.layers.map((lb,i)=>{const l=c.prof.layers[i];return lb.np||l.PL==null?0:Math.abs(lb.pl-l.PL)}).reduce((a,b)=>Math.max(a,b),0);
+  notes.push(labErr<1.5?'Plastic limits within 1.5% of the reference. Lovely thread work.':`Your worst PL was ${labErr.toFixed(1)}% off the reference.`);
+  pay=Math.round(pay);S.money+=pay;S.rep=clamp(S.rep+rep,0,100);S.stats.done++;S.stats.earned+=pay;
+  c.status='done';c.result={cls,truth:T.cls,pay,rep};
+  eva(`#${c.id} ${c.town}: report submitted. Paid ${money(pay)}. Reputation ${rep>=0?'+':''}${rep}.`);
+  showModal(`<div class="sub">#${c.id} · ${esc(c.town)} · report card</div><h2>${cls===T.cls?'Mission accomplished':'Report submitted'}</h2>
+   <div class="row" style="gap:28px"><div><div class="dim">Paid</div><div class="big">${money(pay)}</div></div><div><div class="dim">Reputation</div><div class="big" style="color:${rep>=0?'var(--radar)':'var(--bad)'}">${rep>=0?'+':''}${rep}</div></div><div><div class="dim">Your class / actual</div><div class="big" style="color:var(--book)">${cls} / ${T.cls}</div></div></div>
+   <ul>${notes.map(n=>`<li>${n}</li>`).join('')}</ul>
+   <div class="row"><button class="btn go" data-act="closeModal">Back to the map</button></div>`);
+  S.tab='map';checkOver();
+}
+
+/* ============================================================
+   CREW, GEAR, MANUAL
+   ============================================================ */
+const pips=n=>'●'.repeat(n)+'○'.repeat(3-n);
+function renderCrew(){
+  $('#view').innerHTML=`<div style="display:flex;flex-direction:column;gap:12px">
+   <div class="row" style="justify-content:space-between"><h2 style="font-size:26px;color:var(--book)">Hire the team</h2><span class="mono dim">Daily wage bill ${money(wages())}</span></div>
+   <div class="tip">${S.team.length?'Field skill speeds up field work and lets crew log layers for you. Lab skill speeds up prep and lets crew run Atterberg tests. Maintenance cuts jams, breakdowns and oven trips.':'<b>Lone wolf mode.</b> No wages, so more cash for gear, but every test is yours to do and nothing gets faster. Hire someone below when the work piles up.'}</div>
+   <div class="grid3">${CREW.map(p=>{const h=S.team.includes(p.id);return`<div class="card person"><div><div class="eyebrow">${esc(p.role)}</div><h3>${esc(p.n)}</h3></div>
+     <p style="margin:0">${esc(p.bio)}</p>
+     <div class="skills"><span>Field</span><span class="pips">${pips(p.f)}</span><span>Lab</span><span class="pips">${pips(p.l)}</span><span>Maintenance</span><span class="pips">${pips(p.m)}</span></div>
+     <div class="mono" style="font-size:13px">${money(p.wage)}/day · sign-on ${money(p.sign)}</div>
+     ${h?`<div class="quote">“${esc(p.line)}”</div><button class="btn warn" data-act="fire" data-arg="${p.id}">Let go</button>`:`<button class="btn go" data-act="hire" data-arg="${p.id}">Hire</button>`}</div>`}).join('')}</div></div>`;
+}
+function renderGear(){
+  $('#view').innerHTML=`<div style="display:flex;flex-direction:column;gap:12px"><h2 style="font-size:26px;color:var(--book)">Gear shed</h2>
+   <div class="grid3">${Object.entries(GEAR).map(([k,g])=>{const cur=g.lv[S.gear[k]],nx=g.lv[S.gear[k]+1];return`<div class="card person"><div class="eyebrow">${esc(g.t)}</div><h3 style="font-size:17px">${esc(cur.n)}</h3><p class="dim" style="margin:0">${esc(cur.d)}</p>
+    ${nx?`<div style="border-top:1px solid var(--line);padding-top:8px"><b>Upgrade:</b> ${esc(nx.n)}<br><span class="dim">${esc(nx.d)}</span></div><button class="btn go" data-act="buy" data-arg="${k}" ${S.money>=nx.cost?'':'disabled'}>Buy ${money(nx.cost)}</button>`:'<span class="chip c-ok">Top of the range</span>'}</div>`}).join('')}</div></div>`;
+}
+const MANUAL=[
+ ['How a job runs',`<p>Each contract is a residential site classification to AS 2870: a desk study, boreholes, DCP tests, field logging, lab testing, then a report giving a site class and footing advice.</p>
+  <ol><li><b>Accept</b> the contract on the map. Lodge a <b>Before You Dig Australia</b> (BYDA, formerly Dial Before You Dig) request straight away; plans take about two business days.</li><li><b>Drive</b> to site. Field work stops at 18:00.</li><li><b>Plan</b> boreholes inside the footprint, clear of services.</li><li><b>Drive tubes</b>, <b>extract</b>, run the <b>DCP</b>, and <b>log</b> each layer (ribbon test + Munsell colour).</li><li>Back at HQ: <b>oven 12 h</b> → <b>prep & testing</b> (40 min per sample) → <b>oven 12 h</b> → measure → <b>report</b>.</li></ol>
+  <p>The ovens run while you sleep or drive to the next job. That’s the trick to juggling contracts.</p>`],
+ ['Services & BYDA',`<p>BYDA returns plans from asset owners (TasWater, TasNetworks, NBN, Telstra). They are <b>indicative only</b> and can be out by metres. They <b>never show private services</b>: the water line from the meter to the house or shed, a power cable from the pillar, stormwater from downpipes.</p>
+  <ul><li>Read the surface: meter boxes, pillars, pits, sewer inspection openings (IO), downpipes.</li><li>A cable locator finds live cables and metallic pipes, not PVC or clay pipes.</li><li>Potholing (non-destructive digging) to about 0.5 m is the only sure way.</li></ul>`],
+ ['Push tubes & refusal',`<p>A post driver pushes a thin-walled tube to 2.5 m to recover a continuous core. If it bounces, you’ve hit refusal: bedrock, or a <b>floater</b> (a boulder in the soil, common in dolerite and granite country). Offsetting 0.5 m and re-driving will often get past a floater. On bedrock it never will.</p>`],
+ ['DCP (AS 1289.6.3.2)',`<p>A 9 kg hammer dropped 510 mm drives a 30° cone. Record <b>blows per 100 mm</b>. Low counts (1–2) mean soft ground; under 1 blow/100 mm, or rods sinking under their own weight, is a warning sign for a P site. Refusal is commonly called around 20+ blows/100 mm, or when penetration per blow drops under ~5 mm.</p>
+  <p>Every extra blow at refusal risks stuck or bent rods. Sometimes a few more blows punch through a floater, and a false refusal under-states the depth of reactive clay.</p>`],
+ ['Ribbon test (field texture)',`<p>Wet a golf-ball-sized sample until the bolus <i>just fails to stick to your fingers</i>, knead it 1–2 minutes, then press it out between thumb and forefinger. Ribbon length plus feel gives the texture grade.</p>
+  <div class="scroll"><table class="tbl"><thead><tr><th>Grade</th><th>Ribbon</th><th>Feel</th></tr></thead><tbody>${TEX.map(t=>`<tr><td><b>${t.k}</b> ${t.n}</td><td class="num">${t.rr}</td><td>${t.feel}</td></tr>`).join('')}</tbody></table></div>`],
+ ['Munsell colour',`<p>Notation is <b>Hue Value/Chroma</b>, e.g. 10YR 4/3 (brown). Hue runs from red (2.5YR) to yellow (5Y); value is lightness (2 dark → 8 light); chroma is colour strength (1 grey → 8 vivid).</p>
+  <ul><li>Record the <b>moist</b> colour; note the dry colour separately if needed.</li><li>Natural light, no sunglasses, sun behind you.</li><li>Record mottles separately (e.g. “mottled orange”).</li></ul>
+  <p>Tasmanian tells: black 10YR 2/1 basalt clays (reactive!), dark red 2.5YR 3/6 krasnozems, brown 7.5YR dolerite clays, grey-olive 5Y gleyed Tertiary clays.</p>`],
+ ['Moisture & ovens',`<p>Oven dry at 105–110 °C to constant mass (AS 1289.2.1.1). Moisture content uses <b>dry soil mass</b> as the denominator:</p><p class="mono">w = (m<sub>wet</sub> − m<sub>dry</sub>) / (m<sub>dry</sub> − m<sub>tin</sub>) × 100</p>`],
+ ['Plastic limit rolling',`<p>AS 1289.3.2.1. Roll a thread on a glass plate with even palm pressure. The <b>plastic limit</b> is the moisture content at which the thread crumbles at <b>3 mm</b> diameter.</p>
+  <ul><li>Intact at 3 mm → too wet. Re-form it into a ball and roll again; handling dries it.</li><li>Crumbles thicker than 3 mm → too dry. Add a little water.</li><li>Hairline cracks are the sign you’re close.</li><li>Can’t form a thread at all → <b>non-plastic (NP)</b>, typical of clean sands.</li></ul>`],
+ ['Liquid limit (cone)',`<p>AS 1289.3.9.1. An 80 g, 30° cone is released onto the paste for 5 s. LL is the moisture content at <b>20 mm</b> penetration, read off a line through at least three points between 15 and 25 mm. The Casagrande cup (AS 1289.3.1.1, 25 blows) is the older alternative.</p><p><b>PI = LL − PL</b> (AS 1289.3.3.1).</p>`],
+ ['Linear shrinkage',`<p>AS 1289.3.4.1. Paste at about the liquid limit goes into a 125 mm mould, then is air dried and oven dried. <b>LS = (1 − L<sub>dry</sub>/L<sub>0</sub>) × 100</b>. Quick, cheap and a handy reactivity indicator. As a rough guide, PI ≈ 2 × LS.</p>`],
+ ['Plasticity chart & USCS',`<p>Plot PI against LL. Above the <b>A-line</b> (PI = 0.73(LL − 20)) the fines are clays (C), below are silts (M). LL ≥ 50 is high plasticity (H), below is low (L). So: CL, CH, ML, MH. Sandy soils with plastic fines are SC, silty sands SM, clean sands SP/SW. Peat and organic soils are OH/Pt.</p>`],
+ ['AS 2870 site classes',`<div class="scroll"><table class="tbl"><thead><tr><th>Class</th><th>Description</th><th>y<sub>s</sub></th></tr></thead><tbody>
+  <tr><td><b>A</b></td><td>Most sand and rock sites; little or no ground movement</td><td class="num">—</td></tr><tr><td><b>S</b></td><td>Slightly reactive clay</td><td class="num">0–20 mm</td></tr><tr><td><b>M</b></td><td>Moderately reactive</td><td class="num">20–40 mm</td></tr><tr><td><b>H1</b></td><td>Highly reactive</td><td class="num">40–60 mm</td></tr><tr><td><b>H2</b></td><td>Highly reactive</td><td class="num">60–75 mm</td></tr><tr><td><b>E</b></td><td>Extremely reactive</td><td class="num">&gt; 75 mm</td></tr><tr><td><b>P</b></td><td>Problem sites: uncontrolled fill (&gt; 0.4 m clay / 0.8 m sand), soft soils, landslip, collapsing soils, mine subsidence, abnormal moisture</td><td class="num">n/a</td></tr></tbody></table></div>
+  <p>y<sub>s</sub> = Σ I<sub>ss</sub> · Δu · h / 100 over the depth of design suction change H<sub>s</sub>. The game uses H<sub>s</sub> = ${HS} m and I<sub>ss</sub> ≈ 0.3 LS; check AS 2870 for your climate zone and use real shrink-swell tests (AS 1289.7.1.1) on live jobs.</p>`],
+];
+function renderManual(){
+  const [t,b]=MANUAL[S.manual]||MANUAL[0];
+  $('#view').innerHTML=`<div class="manual"><nav aria-label="Manual sections">${MANUAL.map(([n],i)=>`<button data-act="man" data-arg="${i}" aria-current="${i===S.manual}">${n}</button>`).join('')}</nav><article><h2>${t}</h2>${b}</article></div>`;
+}
+
+/* ---------- Intro ---------- */
+function intro(){
+  showModal(`<div class="sub">Moonah, Hobart · Day 1 · 07:00</div><h2>You’ve hung out your shingle.</h2>
+   <p>Builders across Tasmania need residential site classifications, yesterday. You have a second-hand Christie post driver, a ute with 340,000 km on it, $6,000 and a reputation of 30/100.</p>
+   <p>Beat the deadlines, don’t hit the services, roll a perfect 3 mm thread, and get the site class right. Miss a deadline and you lose the contract <i>and</i> the reputation.</p>
+   <div class="tip">New here? The <b>Field manual</b> tab explains every test, the way the senior geo explains it on your first week.</div>
+   <label class="row" for="iFog"><input type="checkbox" id="iFog"> Play with fog of war: only areas you’ve driven through are revealed, and distant jobs come without desk study notes. You can toggle it on the map any time.</label>
+   <div class="row"><button class="btn go" id="iHire">Hire a team</button><button class="btn" id="iLone">Lone-wolf it (save that cash!)</button></div>`);
+  $('#iFog').onchange=e=>{S.fog=e.target.checked};
+  $('#iHire').onclick=()=>{S.started=true;S.tab='crew';closeModal()};
+  $('#iLone').onclick=()=>{S.started=true;S.tab='map';S.sel=1;eva('Lone wolf mode engaged.');closeModal()};
+}
+
+/* ---------- Boot ---------- */
+function start(data){
+  const saved=data&&data.S?data.S:load();
+  if(saved&&saved.v===1&&!saved.over){S=saved;if(!S.seen)S.seen=[{lon:HQ.lon,lat:HQ.lat,r:55}];render();toast('Welcome back. Game restored.')}
+  else{newGame();render();intro()}
+}
+window.claude?.hot?.snapshot?.(()=>({S}));
+window.claude?.hot?.ready?window.claude.hot.ready(start):start(window.claude?.hot?.data??{});
+</script>
+</body>
+</html>
