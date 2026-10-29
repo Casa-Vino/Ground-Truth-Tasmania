@@ -1077,12 +1077,15 @@ function labFlow(c){
     say(`#${c.id}: prep & testing done (${dur(c.lab.min)}). Moisture tins and LS moulds into the oven for 12 hours.`);closeModal();return}
   const l=ls[i],tech=best('l');
   showModal(`<div class="sub">#${c.id} ${esc(c.town)} · layer ${i+1} of ${ls.length}</div><h2>Atterberg limits: ${esc(l.desc.split(':')[0])}</h2>
-   <p>Crush and sieve to pass 425 µm, then the plastic limit thread and the cone liquid limit. A linear shrinkage mould gets filled from the LL paste.</p>
+   <p>Crush and sieve to pass 425 µm, then the plastic limit thread and the liquid limit. A linear shrinkage mould gets filled from the LL paste.</p>
+   <div><div class="eyebrow" style="margin-bottom:6px">Liquid limit method for this sample</div>
+   <div class="choices" id="llm">${[['casa','Casagrande cup','AS 1289.3.1.1 · groove closes at 25 blows'],['cone','Cone penetrometer','AS 1289.3.9.1 · 20 mm penetration']].map(([k,t,d])=>`<button class="btn" data-m="${k}" aria-pressed="${llMethod()===k}"><b>${t}</b><br><span class="dim" style="font-size:12px">${d}</span></button>`).join('')}</div></div>
    <div class="row"><button class="btn go" id="lbMe">Do it myself</button>${tech&&tech.l>0?`<button class="btn" id="lbDel">Hand it to ${esc(tech.n)}</button>`:''}</div>`);
+  sheet().querySelectorAll('[data-m]').forEach(b=>b.onclick=()=>{S.llMethod=b.dataset.m;sheet().querySelectorAll('[data-m]').forEach(x=>x.setAttribute('aria-pressed',x===b))});
   $('#lbMe').onclick=()=>mgCrush(c,l,i,ls.length);
   if($('#lbDel'))$('#lbDel').onclick=()=>{const s=tech.l;const np=l.PL==null;
-    c.lab.layers.push(np?{np:true}:{pl:r1(l.PL+gauss()*(2.2-.6*s)),ll:r1(l.LL+gauss()*(3-.8*s)),by:tech.n});
-    toast(`${tech.n} runs the limits. ${np?'Non-plastic.':''}`);labFlow(c)};
+    c.lab.layers.push(np?{np:true}:{pl:r1(l.PL+gauss()*(2.2-.6*s)),ll:r1(l.LL+gauss()*(3-.8*s)),method:llMethod(),by:tech.n});
+    toast(`${tech.n} runs the limits${np?'. Non-plastic.':' with the '+LLM[llMethod()]+'.'}`);labFlow(c)};
 }
 function mgCrush(c,l,i,n){
   if(S.gear.crusher){toast('The grinder whirrs. Sample passes 425 µm.');return mgPL(c,l,i,n)}
@@ -1138,7 +1141,72 @@ function mgPL(c,l,i,n){
     ctx.fillStyle='#e1e8e3';ctx.font='600 14px IBM Plex Mono';ctx.fillText(`⌀ ${d.toFixed(1)} mm`,440,40);
   });
 }
-function mgLL(c,l,i,n,plRes){
+const LLM={casa:'Casagrande cup',cone:'cone penetrometer'};
+const llMethod=()=>S.llMethod||'casa';
+function mgLL(c,l,i,n,plRes){return llMethod()==='cone'?mgCone(c,l,i,n,plRes):mgCasa(c,l,i,n,plRes)}
+function mgCasa(c,l,i,n,plRes){
+  const LL=l.LL,FI=.3*Math.max(5,LL-(l.PL??LL-10))+6;
+  let w=r1(LL-rnd(5,9)),pts=[],blows=0,N=0,grooved=false,closed=0,bump=0,auto=false,acc=0;
+  showModal(`<div class="sub">AS 1289.3.1.1 · Casagrande cup · layer ${i+1}/${n}</div><h2>Liquid limit</h2>
+   <div class="tip">Spread the paste in the cup and cut a groove with the grooving tool. Turn the crank at <b>2 drops per second</b> (10 mm drop) and count the blows until the groove closes over <b>13 mm</b>. Stop counting the moment it closes; overshooting inflates the blow count. Repeat at different moisture contents to get at least four points between about 15 and 35 blows, either side of 25. The liquid limit is the moisture content at <b>25 blows</b> on the flow curve (log scale).</div>
+   <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px"><canvas id="cacv"></canvas><canvas id="cach"></canvas></div>
+   <div class="msg" id="camsg">Paste mixed. Spread it in the cup, then cut the groove.</div>
+   <div class="row"><button class="btn" id="cw2">Add water (+2%)</button><button class="btn" id="cw05">Add water (+0.5%)</button><button class="btn" id="cwd">Air dry a bit (−1%)</button><button class="btn" id="cg">Cut groove</button></div>
+   <div class="row"><button class="btn go" id="cb">Turn crank (1 blow)</button><button class="btn" id="ca">Crank at 2 drops/s</button><button class="btn ok" id="cr">Groove closed: record blows</button><button class="btn ok" id="cf">Fit flow curve & record LL</button><span class="mono" id="cn"></span></div>`,()=>stopLoop());
+  const cv=$('#cacv'),ctx=setupCanvas(cv,280,220),ch=$('#cach'),cx=setupCanvas(ch,280,220),msg=$('#camsg');
+  const mt=()=>`Moisture ≈ ${w.toFixed(1)}%`;
+  const remix=dw=>{w=r1(w+dw);grooved=false;auto=false;blows=0;closed=0;msg.className='msg';msg.textContent=`${mt()}. Re-mixed: spread the paste and cut a new groove.`;upd()};
+  const upd=()=>{$('#cn').textContent=grooved?`${blows} blows`:'';$('#ca').textContent=auto?'Stop cranking':'Crank at 2 drops/s'};
+  $('#cw2').onclick=()=>remix(2);$('#cw05').onclick=()=>remix(.5);$('#cwd').onclick=()=>remix(-1);
+  $('#cg').onclick=()=>{grooved=true;blows=0;closed=0;auto=false;N=clamp(25*Math.pow(10,(LL-w)/FI)*rnd(.93,1.07),2,120);msg.className='msg';msg.textContent=`${mt()}. Groove cut cleanly to the base of the cup. Start cranking.`;upd()};
+  const blow=()=>{if(!grooved){toast('Cut a groove first.','hv');auto=false;upd();return}
+    blows++;bump=1;closed=Math.min(30,13*Math.pow(blows/N,1.6));
+    if(blows>=36&&closed<13){msg.className='msg bad';msg.textContent=`${blows} blows and still open: too dry for a useful point. Add water.`}
+    else if(closed>=13){msg.className='msg';msg.textContent=closed>15?`Closed over ${closed.toFixed(0)} mm. You’ve gone past 13 mm.`:'The groove has closed over about 13 mm. Record it now!'}
+    else msg.textContent=`Groove closing… ${closed.toFixed(1)} mm`;
+    upd()};
+  $('#cb').onclick=()=>{auto=false;blow()};
+  $('#ca').onclick=()=>{if(!grooved){toast('Cut a groove first.','hv');return}auto=!auto;acc=0;upd()};
+  $('#cr').onclick=()=>{if(!grooved||!blows){toast('Cut a groove and crank first.','hv');return}
+    auto=false;const p={w,n:blows};pts.push(p);grooved=false;
+    if(closed<11.5&&blows>=36)toast(`Groove still open after ${blows} blows: too dry, not a usable point. Add water.`,'hv');
+    else if(closed<11.5)toast(`Recorded ${blows} blows, but the groove had only closed ${closed.toFixed(1)} mm. That count is low.`,'hv');
+    else if(closed>15)toast(`Recorded ${blows} blows, but it had closed ${closed.toFixed(0)} mm. That count is high.`,'hv');
+    msg.className='msg';msg.textContent=`${mt()} → ${blows} blows. Adjust the moisture, re-mix and go again.`;upd();drawChart()};
+  $('#cf').onclick=()=>{const g=pts.filter(p=>p.n>=15&&p.n<=35);
+    if(g.length<2){toast('Need at least two points between 15 and 35 blows.','bad');return}
+    const ok=g.length>=4&&g.some(p=>p.n<25)&&g.some(p=>p.n>25);
+    const X=g.map(p=>Math.log10(p.n)),mx=X.reduce((a,b)=>a+b,0)/g.length,my=g.reduce((a,p)=>a+p.w,0)/g.length;
+    const sl=g.reduce((a,p,k)=>a+(X[k]-mx)*(p.w-my),0)/Math.max(1e-9,X.reduce((a,x)=>a+(x-mx)**2,0));
+    const ll=r1(my+sl*(Math.log10(25)-mx));
+    if(!ok)toast('Fewer than four points, or none on one side of 25 blows. Your LL is less reliable.','hv');
+    stopLoop();c.lab.layers.push({pl:plRes.pl,ll,method:'casa',pts:g.length,cd:plRes.cd});
+    toast(`LL = ${ll}% · PL = ${plRes.pl}% · PI = ${r1(ll-plRes.pl)} · flow index ${r1(Math.abs(sl))}`);labFlow(c)};
+  const drawChart=()=>{cx.fillStyle='#0b1211';cx.fillRect(0,0,280,220);
+    const lx=v=>30+(Math.log10(v)-1)/(Math.log10(60)-1)*235;
+    const ws=pts.map(p=>p.w).concat([LL-8,LL+8]),w0=Math.min(...ws)-2,w1=Math.max(...ws)+2,Y=v=>200-(v-w0)/(w1-w0)*185;
+    cx.fillStyle='rgba(139,216,151,.12)';cx.fillRect(lx(15),15,lx(35)-lx(15),185);
+    cx.strokeStyle='#efdb72';cx.setLineDash([4,3]);cx.beginPath();cx.moveTo(lx(25),15);cx.lineTo(lx(25),200);cx.stroke();cx.setLineDash([]);
+    cx.fillStyle='#93a69e';cx.font='10px IBM Plex Mono';cx.fillText('blows (log)',196,216);cx.fillText('w %',250,11);
+    [10,15,20,25,35,50].forEach(v=>{cx.fillRect(lx(v),200,1,4);cx.fillText(v,lx(v)-5,212)});
+    [w0,(w0+w1)/2,w1].forEach(v=>cx.fillText(v.toFixed(0),4,Y(v)+3));
+    pts.forEach(p=>{const n=clamp(p.n,10,60);cx.fillStyle=p.n>=15&&p.n<=35?'#8bd897':'#ff6455';cx.beginPath();cx.arc(lx(n),Y(p.w),4,0,7);cx.fill()})};
+  drawChart();
+  loop(dt=>{
+    if(auto&&grooved){acc+=dt;while(acc>=.5){acc-=.5;blow();if(blows>=60){auto=false;upd()}}}
+    bump=Math.max(0,bump-dt*6);
+    ctx.fillStyle='#1d2826';ctx.fillRect(0,0,280,220);
+    const cy=100-bump*6;
+    ctx.fillStyle='#b48a3c';ctx.beginPath();ctx.ellipse(140,cy,115,62,0,0,7);ctx.fill();
+    ctx.fillStyle=munsellRGB(l.mun.h,Math.min(8,l.mun.v+1),l.mun.c);ctx.beginPath();ctx.ellipse(140,cy+4,98,48,0,0,7);ctx.fill();
+    if(grooved){const k=4,gap=6;ctx.fillStyle='#2a1d10';ctx.fillRect(60,cy-gap/2,160,gap);
+      ctx.fillStyle=munsellRGB(l.mun.h,Math.min(8,l.mun.v+1),l.mun.c);ctx.fillRect(140-closed*k/2,cy-gap/2,closed*k,gap);
+      ctx.strokeStyle='#efdb72';ctx.lineWidth=1.5;[140-6.5*k,140+6.5*k].forEach(x=>{ctx.beginPath();ctx.moveTo(x,cy-14);ctx.lineTo(x,cy-6);ctx.moveTo(x,cy+6);ctx.lineTo(x,cy+14);ctx.stroke()});
+      ctx.fillStyle='#efdb72';ctx.font='10px IBM Plex Mono';ctx.fillText('13 mm',122,cy-18)}
+    ctx.fillStyle='#4c5553';ctx.fillRect(40,178,200,22);ctx.fillStyle='#cfd8d3';ctx.font='bold 11px IBM Plex Mono';ctx.fillText(`BLOWS ${String(blows).padStart(2,'0')}`,104,193);
+  });
+}
+function mgCone(c,l,i,n,plRes){
   const LL=l.LL,slope=12/(.2*LL+4);
   let w=r1(LL-rnd(8,14)),pts=[],anim=0,pen=0;
   showModal(`<div class="sub">AS 1289.3.9.1 · cone penetrometer · layer ${i+1}/${n}</div><h2>Liquid limit</h2>
@@ -1157,7 +1225,7 @@ function mgLL(c,l,i,n,plRes){
     const sl=g.reduce((a,p)=>a+(p.p-mx)*(p.w-my),0)/Math.max(1e-6,g.reduce((a,p)=>a+(p.p-mx)**2,0));
     const ll=r1(my+sl*(20-mx));
     if(!ok)toast('Fewer than 3 points, or none on one side of 20 mm. Your LL is extrapolated and less reliable.','hv');
-    c.lab.layers.push({pl:plRes.pl,ll,pts:g.length,cd:plRes.cd});toast(`LL = ${ll}% · PL = ${plRes.pl}% · PI = ${r1(ll-plRes.pl)}`);labFlow(c)};
+    c.lab.layers.push({pl:plRes.pl,ll,method:'cone',pts:g.length,cd:plRes.cd});toast(`LL = ${ll}% · PL = ${plRes.pl}% · PI = ${r1(ll-plRes.pl)}`);labFlow(c)};
   const drawChart=()=>{cx.fillStyle='#0b1211';cx.fillRect(0,0,280,220);
     const ws=pts.map(p=>p.w).concat([LL-10,LL+10]),w0=Math.min(...ws)-2,w1=Math.max(...ws)+2,X=v=>30+(v-w0)/(w1-w0)*235,Y=p=>200-(p/40)*185;
     cx.fillStyle='rgba(139,216,151,.12)';cx.fillRect(30,Y(25),235,Y(15)-Y(25));cx.strokeStyle='#efdb72';cx.setLineDash([4,3]);cx.beginPath();cx.moveTo(30,Y(20));cx.lineTo(265,Y(20));cx.stroke();cx.setLineDash([]);
@@ -1249,7 +1317,7 @@ function reportModal(c){
   const rock=refs.length===c.bhs.length?refs.reduce((a,b)=>a+b,0)/refs.length:null;
   const data=ls.map((l,i)=>{const lg=c.logs.layers[i],lb=c.lab.layers[i]||{};const np=!!lb.np;
     const top=l.top,bot=i===ls.length-1?3:Math.min(l.bot,3);
-    return{top,bot:bot,shownBot:Math.min(l.bot,maxD),tex:lg.tex,mun:lg.mun,ll:np?null:lb.ll,pl:np?null:lb.pl,pi:np?null:r1(lb.ll-lb.pl),LS:lb.ls??0,np,sandy:SANDY.includes(lg.tex)||np,fill:l.fill,org:l.organic,desc:l.desc}});
+    return{top,bot:bot,shownBot:Math.min(l.bot,maxD),tex:lg.tex,mun:lg.mun,ll:np?null:lb.ll,lm:lb.method,pl:np?null:lb.pl,pi:np?null:r1(lb.ll-lb.pl),LS:lb.ls??0,np,sandy:SANDY.includes(lg.tex)||np,fill:l.fill,org:l.organic,desc:l.desc}});
   const calc=ysCalc(data,rock);
   showModal(`<div class="sub">#${c.id} · ${esc(c.town)} · for ${esc(c.client)}</div><h2>Site classification report</h2>
    <div class="eyebrow">Fieldwork</div>
@@ -1259,7 +1327,7 @@ function reportModal(c){
    <div class="eyebrow">Soil profile & lab results</div>
    <div class="scroll"><table class="tbl"><thead><tr><th>Depth (m)</th><th>Field description</th><th>LL</th><th>PL</th><th>PI</th><th>LS %</th><th>USCS</th></tr></thead><tbody>
     ${data.map((d,i)=>`<tr><td class="num">${d.top.toFixed(2)}–${d.shownBot.toFixed(2)}</td><td>${TEX[texIdx(d.tex)].n.toUpperCase()}${d.fill?' (FILL)':''}, ${munsellName(d.mun.h,d.mun.v,d.mun.c)} (${munStr(d.mun)})<br><span class="dim" style="font-size:12px">${esc(d.desc.split(':')[0])}</span></td>
-     <td class="num">${d.np?'NP':d.ll}</td><td class="num">${d.np?'NP':d.pl}</td><td class="num">${d.np?'NP':d.pi}</td><td class="num">${d.LS}</td>
+     <td class="num">${d.np?'NP':d.ll}${d.np||!d.lm?'':`<br><span class="dim" style="font-size:11px">${d.lm==='casa'?'cup':'cone'}</span>`}</td><td class="num">${d.np?'NP':d.pl}</td><td class="num">${d.np?'NP':d.pi}</td><td class="num">${d.LS}</td>
      <td><select id="us${i}" aria-label="USCS group for layer ${i+1}"><option value="">—</option>${USCS.map(u=>`<option>${u}</option>`).join('')}</select></td></tr>`).join('')}</tbody></table></div>
    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px">
     <div><div class="eyebrow">Casagrande plasticity chart</div><canvas id="pchart"></canvas></div>
@@ -1348,7 +1416,10 @@ const MANUAL=[
  ['Moisture & ovens',`<p>Oven dry at 105–110 °C to constant mass (AS 1289.2.1.1). Moisture content uses <b>dry soil mass</b> as the denominator:</p><p class="mono">w = (m<sub>wet</sub> − m<sub>dry</sub>) / (m<sub>dry</sub> − m<sub>tin</sub>) × 100</p>`],
  ['Plastic limit rolling',`<p>AS 1289.3.2.1. Roll a thread on a glass plate with even palm pressure. The <b>plastic limit</b> is the moisture content at which the thread crumbles at <b>3 mm</b> diameter.</p>
   <ul><li>Intact at 3 mm → too wet. Re-form it into a ball and roll again; handling dries it.</li><li>Crumbles thicker than 3 mm → too dry. Add a little water.</li><li>Hairline cracks are the sign you’re close.</li><li>Can’t form a thread at all → <b>non-plastic (NP)</b>, typical of clean sands.</li></ul>`],
- ['Liquid limit (cone)',`<p>AS 1289.3.9.1. An 80 g, 30° cone is released onto the paste for 5 s. LL is the moisture content at <b>20 mm</b> penetration, read off a line through at least three points between 15 and 25 mm. The Casagrande cup (AS 1289.3.1.1, 25 blows) is the older alternative.</p><p><b>PI = LL − PL</b> (AS 1289.3.3.1).</p>`],
+ ['Liquid limit',`<p>Choose the method for each sample in the lab. Both give the moisture content at which the soil starts to flow like a liquid.</p>
+  <p><b>Casagrande cup (AS 1289.3.1.1).</b> Spread the paste in the brass cup and cut a groove with the grooving tool. Turn the crank at 2 drops per second (10 mm drop) and count the blows until the groove closes over 13 mm. Repeat at several moisture contents, aiming for about 15–35 blows either side of 25. Plot moisture against blows on a log scale (the flow curve); LL is the moisture content at <b>25 blows</b>. The slope per log cycle is the flow index. Stop counting the moment it closes, because overshooting inflates the count.</p>
+  <p><b>Cone penetrometer (AS 1289.3.9.1).</b> An 80 g, 30° cone is released onto the paste for 5 s. LL is the moisture content at <b>20 mm</b> penetration, read off a line through at least three points between 15 and 25 mm. It depends less on operator technique than the cup.</p>
+  <p><b>PI = LL − PL</b> (AS 1289.3.3.1). Always report which LL method you used.</p>`],
  ['Linear shrinkage',`<p>AS 1289.3.4.1. Paste at about the liquid limit goes into a 125 mm mould, then is air dried and oven dried. <b>LS = (1 − L<sub>dry</sub>/L<sub>0</sub>) × 100</b>. Quick, cheap and a handy reactivity indicator. As a rough guide, PI ≈ 2 × LS.</p>`],
  ['Plasticity chart & USCS',`<p>Plot PI against LL. Above the <b>A-line</b> (PI = 0.73(LL − 20)) the fines are clays (C), below are silts (M). LL ≥ 50 is high plasticity (H), below is low (L). So: CL, CH, ML, MH. Sandy soils with plastic fines are SC, silty sands SM, clean sands SP/SW. Peat and organic soils are OH/Pt.</p>`],
  ['AS 2870 site classes',`<div class="scroll"><table class="tbl"><thead><tr><th>Class</th><th>Description</th><th>y<sub>s</sub></th></tr></thead><tbody>

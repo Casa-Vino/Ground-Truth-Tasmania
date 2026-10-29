@@ -21,7 +21,7 @@ Progress is saved in the browser's local storage.
 | Push tubes | A timing minigame with a Christie post driver: refusal, floaters and offsetting to re-drive |
 | DCP (AS 1289.6.3.2) | Blows per 100 mm, when to call refusal, stuck rods |
 | Field logging | Ribbon test for field texture, Munsell colour matching |
-| Lab | Oven drying (12 h), crushing, plastic limit thread rolling, cone liquid limit (AS 1289.3.9.1), linear shrinkage (AS 1289.3.4.1), moisture content |
+| Lab | Oven drying (12 h), crushing, plastic limit thread rolling, liquid limit by Casagrande cup (AS 1289.3.1.1) or cone penetrometer (AS 1289.3.9.1), chosen per sample, linear shrinkage (AS 1289.3.4.1), moisture content |
 | Report | Casagrande plasticity chart and USCS, y<sub>s</sub> calculation, AS 2870 site class and footing recommendation |
 
 The **Field manual** tab in the game explains each procedure.
